@@ -10,6 +10,7 @@ const publicUrl = configuredUrl?.protocol === 'https:' && configuredUrl.pathname
   ? configuredUrl : null;
 const supabase = createSupabase(process.env);
 const assistant = createAssistant({ env: process.env, publicUrl, quota: supabase });
+const diagnostic = Boolean(process.env.SUPABASE_DIAGNOSTIC_ENABLED === 'true' && publicUrl && supabase.configured);
 const loginAttempts = [];
 const indexing = Boolean(publicUrl && process.env.SEO_INDEXING === 'true');
 const fileTypes = new Map([
@@ -55,10 +56,10 @@ async function readBody(request, response) {
 
 async function ownerSession(request, response) {
   if (request.method === 'GET') {
-    if (!assistant.enabled) return json(response, 200, { enabled: false });
+    if (!assistant.enabled && !diagnostic) return json(response, 200, { enabled: false });
     try {
       const signedIn = await supabase.authenticated(request.headers.cookie);
-      return json(response, 200, { enabled: true, signedIn });
+      return json(response, 200, { enabled: assistant.enabled, signedIn, ...(diagnostic ? { diagnostic: true } : {}) });
     } catch {
       return json(response, 503, { error: 'Authentification indisponible' });
     }
@@ -69,7 +70,7 @@ async function ownerSession(request, response) {
     response.setHeader('Set-Cookie', clearOwnerCookie());
     return json(response, 200, { signedIn: false });
   }
-  if (!assistant.enabled) return json(response, 503, { error: 'IA externe désactivée' });
+  if (!assistant.enabled && !diagnostic) return json(response, 503, { error: 'Accès propriétaire désactivé' });
   const body = await readBody(request, response);
   if (!body) return;
   const { email, password } = body;
@@ -92,6 +93,23 @@ async function ownerSession(request, response) {
   } catch {
     return json(response, 503, { error: 'Authentification indisponible' });
   }
+}
+
+async function checkSupabase(request, response) {
+  if (!diagnostic) return json(response, 404, { error: 'Diagnostic indisponible' });
+  if (request.method !== 'POST') return json(response, 405, { error: 'Méthode non autorisée' });
+  if (!sameOrigin(request)) return json(response, 403, { error: 'Origine refusée' });
+  try {
+    if (!await supabase.authenticated(request.headers.cookie)) {
+      return json(response, 401, { error: 'Accès réservé au propriétaire' });
+    }
+  } catch {
+    return json(response, 503, { error: 'Authentification indisponible' });
+  }
+  try {
+    if (await supabase.checkQuota()) return json(response, 200, { owner: true, supabase: true });
+  } catch {}
+  return json(response, 503, { error: 'Lecture Supabase indisponible' });
 }
 
 async function ask(request, response) {
@@ -127,6 +145,7 @@ const server = createServer({ requestTimeout: 20_000, headersTimeout: 10_000 }, 
   try {
     const { pathname } = new URL(request.url, 'http://localhost');
     if (pathname === '/healthz' && request.method === 'GET') return json(response, 200, { ok: true });
+    if (pathname === '/api/assistant/diagnostic') return await checkSupabase(request, response);
     if (pathname === '/api/assistant/session') return await ownerSession(request, response);
     if (pathname === '/api/assistant') return await ask(request, response);
     if (!['GET', 'HEAD'].includes(request.method)) return json(response, 405, { error: 'Méthode non autorisée' });

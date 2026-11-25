@@ -139,6 +139,10 @@ const mockResponses = `
   globalThis.fetch = async (value, options) => {
     const url = new URL(value);
     const headers = options.headers;
+    if (process.env.SUPABASE_DIAGNOSTIC_ENABLED === 'true'
+        && (url.origin === 'https://api.openai.com' || url.pathname.endsWith('mut_reserve_assistant_call'))) {
+      process.exit(71);
+    }
     if (url.origin === 'https://mutmock.supabase.co') {
       if (url.pathname === '/auth/v1/token') {
         if (url.searchParams.get('grant_type') !== 'password' || headers.apikey !== 'sb_publishable_test-only') throw Error('Auth');
@@ -152,6 +156,11 @@ const mockResponses = `
         if (headers.Authorization === 'Bearer ${ownerToken}') return Response.json({ id: owner, email_confirmed_at: 'date' });
         if (headers.Authorization === 'Bearer ${otherToken}') return Response.json({ id: 'another-user', email_confirmed_at: 'date' });
         return Response.json({}, { status: 401 });
+      }
+      if (url.pathname === '/rest/v1/rpc/mut_check_assistant_quota') {
+        if (headers.apikey !== 'sb_secret_test-only' || options.method !== 'POST' || options.body !== '{}') throw Error('RPC');
+        return process.env.MOCK_QUOTA === 'down' ? Response.json({ private: 'secret' }, { status: 503 })
+          : Response.json(process.env.MOCK_QUOTA !== 'missing');
       }
       if (url.pathname === '/rest/v1/rpc/mut_reserve_assistant_call') {
         if (headers.apikey !== 'sb_secret_test-only' || options.method !== 'POST' || options.body !== '{}') throw Error('RPC');
@@ -305,4 +314,34 @@ test('PWA V3 met en cache les ressources du site et laisse les appels IA hors ca
   assert.equal(result, undefined);
   handlers.fetch({ request: { method: 'GET', url: scope }, respondWith });
   assert.match(await (await result).text(), /hors ligne/);
+});
+
+test('Diagnostic propriétaire en lecture seule avec OpenAI désactivé', async t => {
+  const env = { ...enabledEnv, OPENAI_ENABLED: 'false', OPENAI_API_KEY: '' };
+  const post = (origin, cookie, site = 'https://tech.example') => fetch(origin + '/api/assistant/diagnostic', {
+    method: 'POST', headers: { Origin: site, ...(cookie ? { Cookie: cookie } : {}) },
+  });
+  const off = await startServer(t, { ...env, SUPABASE_DIAGNOSTIC_ENABLED: '' }, mockResponses);
+  assert.equal((await post(off, sessionCookie)).status, 404);
+  const origin = await startServer(t, { ...env, SUPABASE_DIAGNOSTIC_ENABLED: 'true' }, mockResponses);
+  const session = origin + '/api/assistant/session';
+  assert.deepEqual(await (await fetch(session)).json(), { enabled: false, signedIn: false, diagnostic: true });
+  assert.equal((await post(origin)).status, 401);
+  assert.equal((await post(origin, '__Host-mut-owner=' + otherToken)).status, 401);
+  assert.equal((await post(origin, sessionCookie, 'https://elsewhere.example')).status, 403);
+  const login = await fetch(session, { method: 'POST', headers: {
+    Origin: 'https://tech.example', 'Content-Type': 'application/json',
+  }, body: JSON.stringify({ email: 'owner@example.test', password: 'test-password' }) });
+  assert.equal(login.status, 200);
+  assert.match(login.headers.get('set-cookie'), /Secure; HttpOnly; SameSite=Strict/);
+  const result = await post(origin, login.headers.get('set-cookie').split(';')[0]);
+  assert.equal(result.status, 200);
+  assert.deepEqual(await result.json(), { owner: true, supabase: true });
+  assert.equal((await ask(origin, 'casque')).status, 503);
+  for (const mode of ['down', 'missing']) {
+    const failed = await startServer(t, { ...env, SUPABASE_DIAGNOSTIC_ENABLED: 'true', MOCK_QUOTA: mode }, mockResponses);
+    const response = await post(failed, sessionCookie);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'Lecture Supabase indisponible' });
+  }
 });

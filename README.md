@@ -76,3 +76,11 @@ La fonction SQL réserve chaque tentative avant tout appel OpenAI. Le verrou dan
 Les suggestions OpenAI sont limitées aux fiches du catalogue. Les prix et la validation du budget dépendent uniquement du flux PRIX MALIN. `npm test` simule Supabase et OpenAI, sans identifiant réel.
 
 [Plans Render](https://render.com/docs/free) · [Clés Supabase](https://supabase.com/docs/guides/api/api-keys)
+
+## Diagnostic temporaire Render–Supabase
+
+1. Dans Supabase, exécuter la migration [202611250002_supabase_diagnostic.sql](supabase/migrations/202611250002_supabase_diagnostic.sql) après la migration des quotas. Elle crée une fonction de lecture qui retourne uniquement si la ligne du compteur existe. Son exécution est réservée à `service_role`.
+2. Dans Render, confirmer **Free** et **Auto-Deploy → Off**. Dans **Environment**, conserver `OPENAI_ENABLED=false` et ajouter `SUPABASE_DIAGNOSTIC_ENABLED=true` avec **Save only**. Conserver les variables Supabase et `PUBLIC_URL` déjà configurées. Le diagnostic ne nécessite aucune clé OpenAI.
+3. Dans **Manual Deploy → Deploy a specific commit**, sélectionner le commit contenant le diagnostic sur la branche `feature/mon-univers-tech-v2`. Après le déploiement, vérifier `/healthz` et `/api/assistant` (`{"enabled":false}`).
+4. Dans **Assistant d’achat → Accès propriétaire**, se connecter puis cliquer sur **Vérifier la connexion Supabase**. Le succès confirme l’identité et la lecture via les clés chargées par Render. Une requête POST de même origine sans la session reçoit HTTP 401. Aucun test du bouton ne réserve de quota.
+5. Après le test, se déconnecter puis repasser `SUPABASE_DIAGNOSTIC_ENABLED=false`. Choisir **Save and deploy** pour que cette désactivation prenne effet sur le service en ligne. Conserver `OPENAI_ENABLED=false`.

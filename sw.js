@@ -1,5 +1,5 @@
 const prefix = 'mon-univers-tech-';
-const cacheName = prefix + 'v3.1.0';
+const cacheName = prefix + 'v3.1.1';
 const shell = [
   './', './index.html', './informations.html', './styles.css', './app.js', './assistant.js',
   './catalog.js', './product-details.js', './offers.js', './config.js', './manifest.webmanifest', './assets/logo.svg',

@@ -68,7 +68,16 @@ export function createSupabase(env) {
     return { status: 429, retryAfter: Number.isInteger(seconds) && seconds > 0 && seconds <= 60 ? seconds : undefined };
   }
 
-  return { configured, login, authenticated, reserve };
+  async function checkQuota() {
+    const response = await request('/rest/v1/rpc/mut_check_assistant_quota', {
+      method: 'POST',
+      headers: { apikey: secret, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    return response.ok && await response.json() === true;
+  }
+
+  return { configured, login, authenticated, reserve, checkQuota };
 }
 
 function cookie(token, age) {

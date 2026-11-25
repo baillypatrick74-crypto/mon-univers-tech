@@ -229,16 +229,19 @@ function bubble(text, user = false) {
 }
 const api = new URL('./api/assistant', location.href);
 const session = new URL('./api/assistant/session', location.href);
+let ownerOptions = {};
 function ownerState(signedIn) {
   $('owner-form').hidden = signedIn;
   $('owner-logout').hidden = !signedIn;
-  $('ai-opt-in').hidden = !signedIn;
+  $('ai-opt-in').hidden = !(signedIn && ownerOptions.enabled);
+  $('owner-diagnostic').hidden = !(signedIn && ownerOptions.diagnostic);
   if (!signedIn) $('use-ai').checked = false;
 }
 fetch(session, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
   .then(response => response.ok ? response.json() : null)
   .then(value => {
-    if (value?.enabled !== true) return;
+    if (!value?.enabled && !value?.diagnostic) return;
+    ownerOptions = value;
     $('owner-access').hidden = false;
     ownerState(value.signedIn === true);
   })
@@ -265,6 +268,28 @@ $('owner-form').onsubmit = async event => {
     $('owner-status').textContent = 'Connexion indisponible. Réessayez plus tard.';
   } finally {
     password.value = '';
+    button.disabled = false;
+  }
+};
+$('owner-diagnostic').onclick = async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch(new URL('./api/assistant/diagnostic', location.href), {
+      method: 'POST', signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 401) {
+      ownerState(false);
+      $('owner-status').textContent = 'Session expirée. Reconnectez-vous.';
+      return;
+    }
+    if (!response.ok) throw Error('Diagnostic indisponible');
+    const result = await response.json();
+    if (result.owner !== true || result.supabase !== true) throw Error('Réponse inattendue');
+    $('owner-status').textContent = 'Identité propriétaire vérifiée. Connexion Supabase et lecture du quota réussies.';
+  } catch {
+    $('owner-status').textContent = 'Vérification indisponible. Contrôlez la configuration Render et la migration Supabase.';
+  } finally {
     button.disabled = false;
   }
 };
