@@ -267,11 +267,15 @@ $('chat-form').onsubmit = async event => {
   const pending = bubble('Consultation de l’IA…');
   try {
     const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, budget: snapshot.budget }), signal: AbortSignal.timeout(15_000) });
+      body: JSON.stringify({ message }), signal: AbortSignal.timeout(15_000) });
+    if (response.status === 429) {
+      pending.textContent = 'Quota IA atteint. Le mode local gratuit reste disponible.';
+      return;
+    }
     if (!response.ok) throw new Error('IA indisponible');
     const { answer } = await response.json();
     if (typeof answer !== 'string' || !answer.trim()) throw new Error('Réponse vide');
-    pending.textContent = `Conseil général de l’IA : ${answer}`;
+    pending.textContent = `Suggestion technique du catalogue (sans validation du budget) : ${answer}`;
   } catch {
     pending.textContent = 'IA externe indisponible. Les résultats du catalogue restent accessibles.';
   } finally {

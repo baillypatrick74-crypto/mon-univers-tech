@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { interpret, localReply, results } from '../assistant.js';
 import { readOffers } from '../offers.js';
@@ -72,7 +74,7 @@ test('Affiliation inactive et installateurs publics PRIX MALIN', () => {
 
 async function startServer(t, env, code = "await import('./server.js')") {
   const child = spawn(process.execPath, ['--input-type=module', '-e', code], {
-    env: { ...process.env, PORT: '0', HOST: '127.0.0.1', OPENAI_API_KEY: '', OPENAI_MODEL: '', PUBLIC_URL: '', ...env },
+    env: { ...process.env, PORT: '0', HOST: '127.0.0.1', OPENAI_ENABLED: '', OPENAI_API_KEY: '', OPENAI_MODEL: '', PUBLIC_URL: '', ...env },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   t.after(() => child.kill());
@@ -110,32 +112,82 @@ test('Pages, ressources PWA, mentions légales et SEO', async t => {
   }
 });
 
-test('L’API garde sa clé côté serveur, valide les entrées et limite le débit', async t => {
-  const code = `
-    globalThis.fetch = async (url, options) => {
-      const body = JSON.parse(options.body);
-      if (url !== 'https://api.openai.com/v1/responses'
-          || options.headers.Authorization !== 'Bearer test-only' || body.store !== false) {
-        throw Error('Requête fournisseur inattendue');
-      }
-      const text = body.input.includes('montant') ? '99 euros' : 'Comparez le confort.';
-      return Response.json({ output: [{ content: [{ type: 'output_text', text }] }] });
-    };
-    await import('./server.js');
-  `;
-  const origin = await startServer(t, { PUBLIC_URL: 'https://tech.example', OPENAI_API_KEY: 'test-only', OPENAI_MODEL: 'test-model' }, code);
-  const api = origin + '/api/assistant';
-  const send = (message, site = 'https://tech.example') => fetch(api, {
-    method: 'POST',
-    headers: { Origin: site, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, budget: null }),
+const mockResponses = `
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    const input = JSON.parse(body.input);
+    if (url !== 'https://api.openai.com/v1/responses'
+        || options.headers.Authorization !== 'Bearer test-only' || body.store !== false
+        || body.model !== (process.env.OPENAI_MODEL || 'gpt-4o-mini') || body.max_output_tokens !== 220
+        || body.text.format.strict !== true || input.catalogue.length !== 8
+        || input.catalogue.some(item => 'price' in item) || typeof input.question !== 'string') {
+      throw Error('Requête fournisseur inattendue');
+    }
+    if (input.question === 'erreur') return Response.json({ error: 'SECRET DU FOURNISSEUR' }, { status: 401 });
+    const selection = input.question === 'montant'
+      ? { produits: ['sony-wh-1000xm5'], conseil: '99 euros' }
+      : { produits: ['sony-wh-1000xm5'], conseil: 'audio' };
+    return Response.json({ status: 'completed', output: [{ type: 'message',
+      content: [{ type: 'output_text', text: JSON.stringify(selection) }] }] });
+  };
+  await import('./server.js');
+`;
+
+async function quotaDirectory(t) {
+  const path = await mkdtemp(join(tmpdir(), 'mut-quota-'));
+  t.after(() => rm(path, { recursive: true, force: true }));
+  return path;
+}
+
+const enabledEnv = { PUBLIC_URL: 'https://tech.example', OPENAI_API_KEY: 'test-only', OPENAI_ENABLED: 'true' };
+function ask(origin, message, site = 'https://tech.example') {
+  return fetch(origin + '/api/assistant', {
+    method: 'POST', headers: { Origin: site, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
   });
-  assert.deepEqual(await (await fetch(api)).json(), { enabled: true });
-  assert.equal((await send('casque', 'https://elsewhere.example')).status, 403);
-  assert.equal((await send('a'.repeat(241))).status, 400);
-  assert.equal((await send('a'.repeat(2200))).status, 413);
-  assert.equal((await send('montant')).status, 502);
-  assert.deepEqual(await (await send('casque')).json(), { answer: 'Comparez le confort.' });
-  for (let i = 0; i < 8; i++) assert.equal((await send('casque')).status, 200);
-  assert.equal((await send('casque')).status, 429);
+}
+
+test('API Responses simulée en français et réponse fondée sur le catalogue', async t => {
+  const origin = await startServer(t, { ...enabledEnv, OPENAI_MODEL: 'test-model', OPENAI_USAGE_DIR: await quotaDirectory(t) }, mockResponses);
+  assert.deepEqual(await (await fetch(origin + '/healthz')).json(), { ok: true });
+  assert.equal((await fetch(origin + '/assistant-api.js')).status, 404);
+  assert.deepEqual(await (await fetch(origin + '/api/assistant')).json(), { enabled: true });
+  assert.equal((await ask(origin, 'casque', 'https://elsewhere.example')).status, 403);
+  assert.equal((await ask(origin, 'a'.repeat(241))).status, 400);
+  assert.equal((await ask(origin, 'a'.repeat(2200))).status, 413);
+  assert.equal((await ask(origin, 'montant')).status, 502);
+  const failure = await ask(origin, 'erreur');
+  assert.equal(failure.status, 502);
+  assert.doesNotMatch(await failure.text(), /SECRET DU FOURNISSEUR/);
+  const answer = await (await ask(origin, 'Quel casque recommandez-vous ?')).json();
+  assert.match(answer.answer, /Sony WH-1000XM5/);
+  assert.match(answer.answer, /Comparez le confort/);
+  assert.doesNotMatch(answer.answer, /€|euros|99/);
+  const limited = await ask(origin, 'casque');
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get('retry-after'), '60');
+});
+
+test('Quota journalier et mensuel conservé après redémarrage', async t => {
+  const directory = await quotaDirectory(t);
+  const env = { ...enabledEnv, OPENAI_USAGE_DIR: directory, OPENAI_REQUESTS_PER_DAY: '1', OPENAI_REQUESTS_PER_MONTH: '2' };
+  const first = await startServer(t, env, mockResponses);
+  assert.equal((await ask(first, 'casque')).status, 200);
+  const afterRestart = await startServer(t, env, mockResponses);
+  assert.equal((await ask(afterRestart, 'casque')).status, 429);
+  const monthly = await startServer(t, { ...env, OPENAI_REQUESTS_PER_DAY: '3' }, mockResponses);
+  assert.equal((await ask(monthly, 'casque')).status, 200);
+  assert.equal((await ask(monthly, 'casque')).status, 429);
+  const filenames = await readdir(directory);
+  assert.equal(filenames.length, 1);
+  assert.match(await readFile(join(directory, filenames[0]), 'utf8'), /^(?:\d{4}-\d{2}-\d{2}\n){2}$/);
+});
+
+test('Activation explicite et refus d’appeler OpenAI si le journal est inaccessible', async t => {
+  const directory = await quotaDirectory(t);
+  const disabled = await startServer(t, { ...enabledEnv, OPENAI_ENABLED: 'false', OPENAI_USAGE_DIR: directory }, mockResponses);
+  assert.deepEqual(await (await fetch(disabled + '/api/assistant')).json(), { enabled: false });
+  const broken = await startServer(t, { ...enabledEnv, OPENAI_USAGE_DIR: join(directory, 'absent') }, mockResponses);
+  assert.equal((await ask(broken, 'casque')).status, 503);
+  assert.deepEqual(await readdir(directory), []);
 });

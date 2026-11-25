@@ -44,4 +44,31 @@ La V2 lit le fichier public `offers.json` de PRIX MALIN au chargement, au retour
 
 Configurer `PUBLIC_URL` avec l’origine HTTPS finale, sans sous-chemin. Le serveur s’en sert pour publier le sitemap et la balise canonique. Une fois le domaine public, soumettre `/sitemap.xml` dans Google Search Console. En mode statique, ajouter les URL canoniques et le sitemap du domaine retenu au moment de la publication.
 
-L’IA externe est facultative. Pour la tester, définir `OPENAI_API_KEY` et `OPENAI_MODEL` dans les variables secrètes du service Node, ainsi que `PUBLIC_URL`. L’API vérifie l’origine des requêtes navigateur, limite la taille des messages et plafonne globalement le débit à dix appels par minute et deux appels simultanés par instance. Pour une ouverture publique avec IA, prévoir un plafond fournisseur et une limitation côté hébergeur adaptée au trafic. Le mode local fonctionne dès le premier démarrage et continue de fonctionner si le fournisseur externe est indisponible.
+## Activer l’assistant OpenAI sur Render
+
+1. Dans [Render](https://dashboard.render.com/), choisir **New → Blueprint**, connecter le dépôt `baillypatrick74-crypto/mon-univers-tech` et sélectionner `feature/mon-univers-tech-v2` comme branche source du Blueprint. Examiner le prix de Starter et du disque persistant de 1 Go avant de créer le service. Le manifeste démarre le mode local, utilise une seule instance et désactive les déploiements automatiques.
+2. Après le premier déploiement, vérifier que `/healthz` renvoie `{"ok":true}` et que `/api/assistant` renvoie `{"enabled":false}`. Copier l’origine HTTPS affichée par Render, sans chemin. Un domaine personnalisé déjà configuré et vérifié convient aussi.
+3. Dans [OpenAI Platform](https://platform.openai.com/), créer un projet dédié, vérifier la facturation et créer une [clé de projet](https://platform.openai.com/api-keys) autorisée à utiliser l’API Responses. Limiter les permissions au nécessaire quand la configuration du projet le permet. Configurer un budget d’alerte dans les paramètres du projet. Le budget d’alerte OpenAI est indicatif, les limites ci-dessous sont appliquées par le serveur.
+4. Dans le service Render, ouvrir **Environment → Add Environment Variable**. Renseigner les valeurs suivantes, puis utiliser **Save, rebuild, and deploy**.
+
+   | Variable | Valeur |
+   | --- | --- |
+   | `PUBLIC_URL` | Origine HTTPS exacte du service |
+   | `OPENAI_API_KEY` | Clé du projet saisie uniquement dans Render |
+   | `OPENAI_ENABLED` | `true` |
+   | `OPENAI_USAGE_DIR` | `/var/data`, le disque persistant du Blueprint |
+   | `OPENAI_MODEL` | `gpt-4o-mini`, ou un modèle économique autorisé prenant en charge les sorties structurées |
+   | `OPENAI_REQUESTS_PER_MINUTE` | Facultatif, `3` par défaut, maximum `10` |
+   | `OPENAI_REQUESTS_PER_DAY` | Facultatif, `25` par défaut, maximum `1000` |
+   | `OPENAI_REQUESTS_PER_MONTH` | Facultatif, `300` par défaut, maximum `10000` |
+   | `OPENAI_MAX_OUTPUT_TOKENS` | Facultatif, `220` par défaut, de `100` à `512` |
+
+5. Vérifier que `/api/assistant` renvoie `{"enabled":true}`. Cette vérification et le mode local ne contactent pas OpenAI. Sur le site, l’utilisateur doit cocher l’option OpenAI avant d’envoyer son message. Le premier envoi avec la case cochée est susceptible d’être facturé. Pour couper les appels, remettre `OPENAI_ENABLED=false` dans Render et redéployer.
+
+### Fonctionnement et quotas
+
+Le serveur n’envoie à OpenAI que le message présent et les fiches publiques du catalogue. L’API Responses sélectionne des identifiants et une catégorie de conseil via un schéma de sortie strict. L’interface affiche les fiches et textes connus. Les prix, stocks et seuils de budget restent déterminés par les offres PRIX MALIN validées. L’IA connectée ne prétend pas qu’un modèle respecte un budget. Le mode local reste disponible sans compte API et lorsque l’API est indisponible ou le quota atteint.
+
+Les compteurs sont globaux pour cette instance et cette clé utilisée par le service. Un seul appel OpenAI est simultané. Chaque tentative est réservée avant l’appel et compte même si OpenAI renvoie une erreur. Les plafonds journalier et mensuel suivent le calendrier UTC et persistent sur le disque après redémarrage. L’API refuse tout appel si le journal ne peut pas être lu ou écrit. Garder une seule instance et conserver le disque. Ces limites plafonnent les appels et la longueur des réponses, le montant dépend de la tarification du modèle. Utiliser une clé dédiée à ce service pour que d’autres applications ne consomment pas en dehors de ces compteurs.
+
+`npm test` simule intégralement OpenAI et couvre le mode local, le filtrage des offres, l’origine, la réponse structurée et les limites. Aucun identifiant réel n’est nécessaire.
