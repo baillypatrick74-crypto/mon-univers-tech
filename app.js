@@ -1,7 +1,7 @@
 import { productDetails, productFeatures } from './product-details.js';
 import { availability, rankOffers, readOffers } from './offers.js';
 import { interpret, localReply, money, results } from './assistant.js';
-import { awin, downloads, offerFeed, prixMalin } from './config.js';
+import { affiliateUrl, downloads, offerFeed, prixMalin } from './config.js';
 
 const $ = id => document.getElementById(id);
 const node = (tag, content, className) => {
@@ -51,15 +51,23 @@ document.addEventListener('keydown', event => {
 menuState();
 
 document.querySelectorAll('.app-card').forEach(card => {
-  const files = downloads[card.querySelector('h3').textContent] ?? {};
-  for (const [platform, extension] of [['Android', /\.apk$/i], ['Windows', /\.(?:exe|msi|msix)$/i]]) {
+  const files = downloads[card.querySelector('h3').textContent];
+  if (!files) return;
+  card.querySelector('h3').after(node('small', `Version ${files.version}`, 'version'));
+  const actions = node('div', null, 'download-links');
+  for (const [platform, extension, type] of [['Android', /\.apk$/i, 'APK'], ['Windows', /\.exe$/i, 'EXE']]) {
     if (!files[platform]) continue;
     let url;
     try { url = new URL(files[platform]); } catch { continue; }
-    if (url?.protocol === 'https:' && !url.username && !url.password && extension.test(url.pathname)) {
-      card.append(link(`Télécharger pour ${platform}`, url.href));
+    if (url.protocol === 'https:' && !url.username && !url.password && extension.test(url.pathname)) {
+      const download = link(`${platform} · ${type}`, url.href);
+      download.className = 'button outline';
+      download.setAttribute('aria-label', `Télécharger ${card.querySelector('h3').textContent} pour ${platform} (${type})`);
+      actions.append(download);
     }
   }
+  if (actions.childElementCount) card.append(actions);
+  card.append(link('Notes de version', files.release), link('Sommes SHA-256', files.checksums));
 });
 
 let selection = [];
@@ -82,15 +90,8 @@ $('clear').onclick = () => { selection = []; renderSelection(); };
 renderSelection();
 
 function merchantLink(offer) {
-  const rule = awin[offer.merchant];
-  const destination = new URL(offer.url);
-  if (rule?.domains?.includes(destination.hostname)
-      && /^\d+$/.test(rule.merchantId) && /^\d+$/.test(rule.publisherId)) {
-    const url = new URL('https://www.awin1.com/cread.php');
-    url.search = new URLSearchParams({ awinmid: rule.merchantId, awinaffid: rule.publisherId, ued: destination.href });
-    return link('Voir l’offre · lien affilié', url.href, true);
-  }
-  return link('Voir l’offre', destination.href);
+  const affiliate = affiliateUrl(offer);
+  return affiliate ? link('Voir l’offre · lien affilié', affiliate, true) : link('Voir l’offre', offer.url);
 }
 
 let offers = [];
@@ -135,7 +136,9 @@ function renderProducts() {
     image.width = 400;
     image.height = 533;
     image.loading = 'lazy';
-    card.append(image, node('small', photo ? 'Photo du modèle' : 'Illustration de la catégorie'));
+    const picture = node('div', null, 'product-picture');
+    picture.append(image);
+    card.append(picture, node('small', photo ? 'Photo du modèle' : 'Illustration de la catégorie', 'product-caption'));
     if (photo) card.append(link(`Photo redimensionnée : ${photo.author} · ${photo.license}`, photo.source));
     const compare = node('button', 'Comparer les offres', 'outline');
     compare.setAttribute('aria-label', `Comparer les offres pour ${product.brand} ${product.model}`);
@@ -146,13 +149,13 @@ function renderProducts() {
     };
     const technical = node('ul', null, 'technical');
     for (const feature of productFeatures(product)) technical.append(node('li', feature));
-    card.append(node('h3', `${product.brand} ${product.model}`), node('p', product.specs));
+    card.append(node('h3', `${product.brand} ${product.model}`), node('p', product.specs, 'product-specs'));
     if (technical.childElementCount) card.append(technical);
     if (details.source) card.append(link('Fiche constructeur', details.source));
     const firstAvailable = ranked.find(offer => offer.availability === 'in_stock');
     card.append(
       node('strong', best ? `${money(best.total)} · ${best.merchant}` : firstAvailable
-        ? `${money(firstAvailable.price)} · ${firstAvailable.merchant}` : 'Prix comparable indisponible'),
+        ? `${money(firstAvailable.price)} · ${firstAvailable.merchant}` : 'Prix comparable indisponible', 'product-price'),
       node('small', best ? 'Livraison comprise' : firstAvailable ? 'Frais de livraison inconnus' : `${ranked.length} offre(s) publiée(s)`),
       compare,
     );
@@ -229,6 +232,10 @@ fetch(api, { cache: 'no-store', signal: AbortSignal.timeout(3000) })
   .then(response => response.ok ? response.json() : null)
   .then(value => { $('ai-opt-in').hidden = value?.enabled !== true; })
   .catch(() => {});
+$('use-ai').onchange = () => {
+  $('pilot-access').hidden = !$('use-ai').checked;
+  if (!$('use-ai').checked) $('pilot-code').value = '';
+};
 $('chat-form').onsubmit = async event => {
   event.preventDefault();
   const input = $('message');
@@ -262,12 +269,23 @@ $('chat-form').onsubmit = async event => {
   }
   $('conversation').scrollTop = $('conversation').scrollHeight;
   if ($('ai-opt-in').hidden || !$('use-ai').checked) return;
+  const code = $('pilot-code').value.trim();
+  if (!/^[a-f0-9]{64}$/i.test(code)) {
+    bubble('Saisissez votre code d’accès testeur pour utiliser OpenAI. Les conseils locaux sont disponibles.');
+    $('pilot-code').focus();
+    return;
+  }
   const submit = $('chat-form').querySelector('button');
   submit.disabled = true;
   const pending = bubble('Consultation de l’IA…');
   try {
-    const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${code}` },
       body: JSON.stringify({ message }), signal: AbortSignal.timeout(15_000) });
+    if (response.status === 401) {
+      $('pilot-code').value = '';
+      pending.textContent = 'Code testeur refusé. Le mode local reste disponible.';
+      return;
+    }
     if (response.status === 429) {
       pending.textContent = 'Quota IA atteint. Le mode local gratuit reste disponible.';
       return;

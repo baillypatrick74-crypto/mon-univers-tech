@@ -1,4 +1,5 @@
-import { closeSync, fsyncSync, openSync, readFileSync, statSync, writeSync } from 'node:fs';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { accessSync, constants, closeSync, fsyncSync, openSync, readFileSync, statSync, writeSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { products } from './catalog.js';
 import { productFeatures } from './product-details.js';
@@ -40,9 +41,25 @@ export function createAssistant({ env, publicUrl, now = () => new Date() }) {
   const directory = env.OPENAI_USAGE_DIR;
   const key = env.OPENAI_API_KEY?.trim();
   const model = env.OPENAI_MODEL?.trim() || 'gpt-4o-mini';
-  const enabled = Boolean(env.OPENAI_ENABLED === 'true' && publicUrl && key && directory && isAbsolute(directory)
+  const tokenHash = /^[a-f0-9]{64}$/i.test(env.OPENAI_PILOT_TOKEN_SHA256 ?? '')
+    ? Buffer.from(env.OPENAI_PILOT_TOKEN_SHA256, 'hex') : null;
+  const configured = Boolean(env.OPENAI_ENABLED === 'true' && publicUrl && key && tokenHash && directory && isAbsolute(directory)
     && perMinute && perDay && perMonth && outputTokens && outputTokens >= 100
     && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(model));
+  function enabled() {
+    if (!configured) return false;
+    try {
+      accessSync(directory, constants.R_OK | constants.W_OK | constants.X_OK);
+      return statSync(directory).isDirectory();
+    } catch { return false; }
+  }
+
+  function authenticated(authorization) {
+    const credential = /^Bearer ([a-f0-9]{64})$/i.exec(authorization ?? '')?.[1];
+    if (!credential || !tokenHash) return false;
+    return timingSafeEqual(createHash('sha256').update(credential).digest(), tokenHash);
+  }
+
   const calls = [];
   let inFlight = false;
 
@@ -71,6 +88,7 @@ export function createAssistant({ env, publicUrl, now = () => new Date() }) {
   }
 
   async function ask(message) {
+    if (!enabled()) return { status: 503 };
     const instant = now();
     while (calls[0] <= +instant - 60_000) calls.shift();
     if (inFlight || calls.length >= perMinute) return { status: 429, retryAfter: 60 };
@@ -113,5 +131,5 @@ export function createAssistant({ env, publicUrl, now = () => new Date() }) {
     }
   }
 
-  return { enabled, ask };
+  return { enabled, authenticated, ask };
 }

@@ -8,6 +8,7 @@ const publicUrl = configuredUrl?.protocol === 'https:' && configuredUrl.pathname
   && !configuredUrl.username && !configuredUrl.password && !configuredUrl.search && !configuredUrl.hash
   ? configuredUrl : null;
 const assistant = createAssistant({ env: process.env, publicUrl });
+const indexing = Boolean(publicUrl && process.env.SEO_INDEXING === 'true');
 const fileTypes = new Map([
   ['html', 'text/html; charset=utf-8'], ['css', 'text/css; charset=utf-8'],
   ['js', 'text/javascript; charset=utf-8'], ['svg', 'image/svg+xml'], ['png', 'image/png'],
@@ -16,7 +17,7 @@ const fileTypes = new Map([
 const routes = new Set([
   'index.html', 'informations.html', 'styles.css', 'app.js', 'assistant.js', 'offers.js',
   'catalog.js', 'product-details.js', 'config.js', 'sw.js', 'manifest.webmanifest', 'assets/logo.svg', 'assets/hero.webp',
-  'assets/icon-192.png', 'assets/icon-512.png', 'assets/galaxy-s24.webp', 'assets/iphone-16.webp', ...[0, 1, 2, 3].map(index => `assets/category-${index}.webp`),
+  'assets/prix-malin.png', 'assets/theme.js', 'assets/icon-192.png', 'assets/icon-512.png', 'assets/galaxy-s24.webp', 'assets/iphone-16.webp', ...[0, 1, 2, 3].map(index => `assets/category-${index}.webp`),
 ]);
 
 function json(response, status, data) {
@@ -25,11 +26,14 @@ function json(response, status, data) {
 }
 
 async function ask(request, response) {
-  if (request.method === 'GET') return json(response, 200, { enabled: assistant.enabled });
+  if (request.method === 'GET') return json(response, 200, { enabled: assistant.enabled() });
   if (request.method !== 'POST') return json(response, 405, { error: 'Méthode non autorisée' });
-  if (!assistant.enabled) return json(response, 503, { error: 'IA externe désactivée' });
+  if (!assistant.enabled()) return json(response, 503, { error: 'IA externe désactivée' });
   if (request.headers.origin !== publicUrl.origin || request.headers['sec-fetch-site'] === 'cross-site') {
     return json(response, 403, { error: 'Origine refusée' });
+  }
+  if (!assistant.authenticated(request.headers.authorization)) {
+    return json(response, 401, { error: 'Accès réservé aux testeurs' });
   }
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) {
     return json(response, 415, { error: 'Format non pris en charge' });
@@ -62,16 +66,17 @@ const server = createServer({ requestTimeout: 20_000, headersTimeout: 10_000 }, 
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://baillypatrick74-crypto.github.io; object-src 'none'; frame-ancestors 'none'; base-uri 'self'");
+  if (!indexing) response.setHeader('X-Robots-Tag', 'noindex');
   try {
     const { pathname } = new URL(request.url, 'http://localhost');
     if (pathname === '/healthz' && request.method === 'GET') return json(response, 200, { ok: true });
     if (pathname === '/api/assistant') return await ask(request, response);
     if (!['GET', 'HEAD'].includes(request.method)) return json(response, 405, { error: 'Méthode non autorisée' });
-    if (publicUrl && pathname === '/robots.txt') {
+    if (pathname === '/robots.txt') {
       response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return response.end(request.method === 'HEAD' ? undefined : `User-agent: *\nAllow: /\nSitemap: ${publicUrl.origin}/sitemap.xml\n`);
+      return response.end(request.method === 'HEAD' ? undefined : `User-agent: *\nAllow: /\n${indexing ? 'Sitemap: ' + publicUrl.origin + '/sitemap.xml\n' : ''}`);
     }
-    if (publicUrl && pathname === '/sitemap.xml') {
+    if (indexing && pathname === '/sitemap.xml') {
       const entries = ['/', '/informations.html'].map(path => `<url><loc>${publicUrl.origin}${path}</loc></url>`).join('');
       response.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
       return response.end(request.method === 'HEAD' ? undefined : `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${entries}</urlset>`);

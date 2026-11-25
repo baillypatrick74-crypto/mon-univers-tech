@@ -9,10 +9,11 @@
   <meta property="og:locale" content="fr_FR">
   <meta property="og:title" content="MON UNIVERS TECH — Applications et comparateur high-tech">
   <meta property="og:description" content="Découvrez nos applications et comparez les offres high-tech selon votre budget.">
-  <title>MON UNIVERS TECH — Applications et comparateur high-tech</title>
+  <title>MON UNIVERS TECH 3.0 — Applications et comparateur high-tech</title>
   <link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icon-192.png">
   <link rel="manifest" href="./manifest.webmanifest">
+  <script src="./assets/theme.js"></script>
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./app.js"></script>
 </head>
@@ -24,6 +25,7 @@
     <nav id="navigation" aria-label="Navigation principale">
       <a href="#applications">Applications</a><a href="#boutique">Boutique</a><a href="#bonsplans">Bons plans</a><a href="#assistant">Assistant IA</a>
     </nav>
+    <label class="theme-control"><span>Thème</span><select id="theme"><option value="auto">Système</option><option value="light">Clair</option><option value="dark">Sombre</option></select></label>
   </div></header>
 
   <main id="accueil">
@@ -41,7 +43,7 @@
       <div class="app-grid">
         <article class="card app-card">
           <svg class="app-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 22v-6l4-7h14l4 7v6zM6 16h20M9 22v3m14-3v3m-13-6h2m8 0h2"/></svg>
-          <h3>SENTINEL AUTO V0.7</h3><p>Prototype d’assistance visuelle et sonore à la conduite. Gardez toute votre attention sur la route.</p>
+          <h3>SENTINEL AUTO</h3><small class="version">Prototype v0.7</small><p>Prototype d’assistance visuelle et sonore à la conduite. Gardez toute votre attention sur la route.</p>
           <a href="https://github.com/baillypatrick74-crypto/Sentinel-auto">Voir le projet GitHub</a>
         </article>
         <article class="card app-card">
@@ -53,7 +55,7 @@
           <h3>MAISON IA</h3><p>Projet de gestion des appareils de la maison connectée.</p>
         </article>
         <article class="card app-card">
-          <svg class="app-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 7h11l11 11-9 9L5 14zM10 12h.01m5 6l5-5"/></svg>
+          <img class="app-icon app-logo" src="./assets/prix-malin.png" width="48" height="48" alt="">
           <h3>PRIX MALIN</h3><p>Comparateur high-tech. Installateurs disponibles pour Android 8 ou supérieur et Windows 11 x64.</p>
           <a href="https://baillypatrick74-crypto.github.io/prix-malin/">Ouvrir PRIX MALIN</a>
         </article>
@@ -61,7 +63,7 @@
     </section>
 
     <section id="bonsplans" class="wrap section">
-      <div class="section-head"><div><h2>Bons plans high-tech</h2><p>Catalogue PRIX MALIN. Vérifiez le prix et le stock chez le marchand avant de commander.</p></div><a href="https://baillypatrick74-crypto.github.io/prix-malin/">Voir le comparateur PRIX MALIN</a></div>
+      <div class="section-head"><div><h2>Bons plans high-tech</h2><p>Catalogue PRIX MALIN. Certains liens identifiés peuvent donner lieu à une commission. Vérifiez le prix et le stock chez le marchand avant de commander.</p></div><a href="https://baillypatrick74-crypto.github.io/prix-malin/">Voir le comparateur PRIX MALIN</a></div>
       <form id="filters" class="card filters" role="search">
         <label>Produit, marque ou modèle<input id="produit" type="search" placeholder="Ex. Galaxy S24"></label>
         <label>Catégorie<select id="category"><option value="">Toutes</option><option>Smartphones</option><option>PC portables</option><option>Audio</option><option>Écrans</option></select></label>
@@ -85,6 +87,7 @@
         <form id="chat-form">
           <label>Votre message<input id="message" required maxlength="240" placeholder="Ex. iPhone avec Wi-Fi 7 et 128 Go sous 700 €"></label>
           <label class="opt-in" id="ai-opt-in" hidden><input type="checkbox" id="use-ai"> Utiliser OpenAI pour obtenir une suggestion technique issue du catalogue. Votre message est transmis à OpenAI.</label>
+          <label id="pilot-access" hidden>Code d’accès testeur<input id="pilot-code" type="password" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
           <button type="submit">Envoyer</button>
         </form>
       </div>

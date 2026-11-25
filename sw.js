@@ -1,9 +1,9 @@
 const prefix = 'mon-univers-tech-';
-const cacheName = prefix + 'v2.1.1';
+const cacheName = prefix + 'v3.0.0';
 const shell = [
   './', './index.html', './informations.html', './styles.css', './app.js', './assistant.js',
   './catalog.js', './product-details.js', './offers.js', './config.js', './manifest.webmanifest', './assets/logo.svg',
-  './assets/icon-192.png', './assets/icon-512.png', './assets/hero.webp', './assets/galaxy-s24.webp', './assets/iphone-16.webp',
+  './assets/prix-malin.png', './assets/theme.js', './assets/icon-192.png', './assets/icon-512.png', './assets/hero.webp', './assets/galaxy-s24.webp', './assets/iphone-16.webp',
   ...[0, 1, 2, 3].map(index => `./assets/category-${index}.webp`),
 ];
 const cachedUrls = new Set(shell.map(path => new URL(path, self.registration.scope).href));

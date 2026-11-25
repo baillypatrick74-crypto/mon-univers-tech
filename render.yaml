@@ -16,6 +16,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: SEO_INDEXING
+        value: "false"
       - key: OPENAI_ENABLED
         value: "false"
       - key: OPENAI_USAGE_DIR
