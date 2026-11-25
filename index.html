@@ -54,7 +54,7 @@
         </article>
         <article class="card app-card">
           <svg class="app-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 7h11l11 11-9 9L5 14zM10 12h.01m5 6l5-5"/></svg>
-          <h3>PRIX MALIN</h3><p>Catalogue et comparaison des offres marchandes high-tech.</p>
+          <h3>PRIX MALIN</h3><p>Comparateur high-tech. Installateurs disponibles pour Android 8 ou supérieur et Windows 11 x64.</p>
           <a href="https://baillypatrick74-crypto.github.io/prix-malin/">Ouvrir PRIX MALIN</a>
         </article>
       </div>
@@ -71,7 +71,7 @@
       <p id="offer-status" role="status">Chargement des offres…</p>
       <p id="count" role="status"></p>
       <div id="products" class="app-grid"></div>
-      <div id="external-search" class="actions" hidden></div>
+      <div id="external-search" class="card" hidden></div>
       <noscript>Vous pouvez consulter le catalogue via le lien PRIX MALIN ci-dessus.</noscript>
     </section>
 
@@ -83,7 +83,7 @@
           <p class="message">Quel produit cherchez-vous ? Par exemple « comparer les casques à moins de 200 € ».</p>
         </div>
         <form id="chat-form">
-          <label>Votre message<input id="message" required maxlength="240" placeholder="Ex. Un smartphone à moins de 400 €"></label>
+          <label>Votre message<input id="message" required maxlength="240" placeholder="Ex. iPhone avec Wi-Fi 7 et 128 Go sous 700 €"></label>
           <label class="opt-in" id="ai-opt-in" hidden><input type="checkbox" id="use-ai"> Utiliser l’IA externe pour obtenir un conseil général. Le message et le budget sont transmis au fournisseur.</label>
           <button type="submit">Envoyer</button>
         </form>
@@ -93,7 +93,12 @@
     <section id="boutique" class="wrap section">
       <h2>Boutique high-tech</h2>
       <p>Préparez une sélection de catégories, enregistrée sur cet appareil.</p>
-      <div class="actions" id="shop"><button class="outline">Smartphones</button><button class="outline">Informatique</button><button class="outline">Audio</button><button class="outline">Maison connectée</button></div>
+      <div class="app-grid" id="shop">
+        <article class="card shop-card"><h3>Smartphones</h3><p>Comparez les modèles, leur stockage et leur connectivité.</p><a href="#bonsplans" data-shop-filter="Smartphones">Voir les smartphones</a><button class="outline" type="button" data-category="Smartphones">Ajouter à ma sélection</button></article>
+        <article class="card shop-card"><h3>Informatique</h3><p>Explorez les ordinateurs portables et leurs configurations.</p><a href="#bonsplans" data-shop-filter="PC portables">Voir les ordinateurs</a><button class="outline" type="button" data-category="Informatique">Ajouter à ma sélection</button></article>
+        <article class="card shop-card"><h3>Audio</h3><p>Consultez les fiches et les offres pour les casques.</p><a href="#bonsplans" data-shop-filter="Audio">Voir les casques</a><button class="outline" type="button" data-category="Audio">Ajouter à ma sélection</button></article>
+        <article class="card shop-card"><h3>Écrans</h3><p>Retrouvez les caractéristiques des moniteurs.</p><a href="#bonsplans" data-shop-filter="Écrans">Voir les écrans</a><button class="outline" type="button" data-category="Écrans">Ajouter à ma sélection</button></article>
+      </div>
       <div id="selection" class="card selection" hidden><h3>Ma sélection</h3><p id="liste" role="status"></p><button id="clear" class="outline">Vider la sélection</button></div>
     </section>
   </main>

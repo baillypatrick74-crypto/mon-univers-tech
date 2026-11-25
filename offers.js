@@ -24,8 +24,10 @@ export function readOffers(feed, now = Date.now()) {
     if (!Number.isFinite(observed) || !Number.isFinite(expires)
         || observed > now || expires <= now) return [];
 
-    const url = URL.parse(typeof row.url === 'string' ? row.url : '');
-    if (!url || url.protocol !== 'https:' || url.username || url.password) return [];
+    if (typeof row.url !== 'string') return [];
+    let url;
+    try { url = new URL(row.url); } catch { return []; }
+    if (url.protocol !== 'https:' || url.username || url.password) return [];
 
     const shipping = isAmount(row.shippingCents) ? row.shippingCents : null;
     const total = shipping === null ? null : row.priceCents + shipping;

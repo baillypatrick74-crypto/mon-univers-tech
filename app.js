@@ -1,3 +1,4 @@
+import { productDetails, productFeatures } from './product-details.js';
 import { availability, rankOffers, readOffers } from './offers.js';
 import { interpret, localReply, money, results } from './assistant.js';
 import { awin, downloads, offerFeed, prixMalin } from './config.js';
@@ -18,6 +19,15 @@ const link = (label, href, sponsored = false) => {
 };
 const date = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Paris' });
 const pictures = { phone: 0, laptop: 1, audio: 2, monitor: 3 };
+
+function searchLinks(query) {
+  const term = encodeURIComponent(query || 'produits high-tech');
+  return [
+    link('Rechercher sur Google Shopping', `https://shopping.google.com/search?q=${term}`),
+    link('Rechercher sur Idealo', `https://www.idealo.fr/prechcat.html?q=${term}`),
+    link('Ouvrir PRIX MALIN', prixMalin),
+  ];
+}
 
 const mobile = matchMedia('(max-width:720px)');
 function menuState() {
@@ -43,7 +53,9 @@ menuState();
 document.querySelectorAll('.app-card').forEach(card => {
   const files = downloads[card.querySelector('h3').textContent] ?? {};
   for (const [platform, extension] of [['Android', /\.apk$/i], ['Windows', /\.(?:exe|msi|msix)$/i]]) {
-    const url = URL.parse(files[platform] ?? '');
+    if (!files[platform]) continue;
+    let url;
+    try { url = new URL(files[platform]); } catch { continue; }
     if (url?.protocol === 'https:' && !url.username && !url.password && extension.test(url.pathname)) {
       card.append(link(`Télécharger pour ${platform}`, url.href));
     }
@@ -61,9 +73,9 @@ function renderSelection() {
   try { localStorage.setItem('mut-selection', JSON.stringify(selection)); } catch {}
 }
 $('shop').onclick = event => {
-  const button = event.target.closest('button');
+  const button = event.target.closest('button[data-category]');
   if (!button) return;
-  selection = [...new Set([...selection, button.textContent])];
+  selection = [...new Set([...selection, button.dataset.category])];
   renderSelection();
 };
 $('clear').onclick = () => { selection = []; renderSelection(); };
@@ -86,12 +98,18 @@ let activeProduct;
 let fetching = false;
 let updatedAt = null;
 let feedAvailable = false;
+let feedRows = null;
+let productFilters;
 
 function renderComparison(product) {
   $('comparison-title').textContent = `${product.brand} ${product.model}`;
   const ranked = rankOffers(offers, product.id);
   $('comparison-offers').replaceChildren();
-  if (!ranked.length) $('comparison-offers').append(node('p', 'Aucune offre valide pour ce modèle.'));
+  if (!ranked.length) {
+    const actions = node('div', null, 'actions');
+    actions.append(...searchLinks(`${product.brand} ${product.model} ${productDetails[product.id]?.storageGB ? productDetails[product.id].storageGB + ' Go' : ''}`.trim()));
+    $('comparison-offers').append(node('p', 'Aucune offre valide pour ce modèle.'), actions);
+  }
   for (const offer of ranked) {
     const row = node('div', null, 'offer');
     const shipping = offer.shipping === null ? 'livraison inconnue' : `livraison ${money(offer.shipping)}`;
@@ -105,15 +123,20 @@ function renderComparison(product) {
 function renderProducts() {
   const query = $('produit').value.trim();
   const budget = $('max').value ? Math.round($('max').valueAsNumber * 100) : null;
-  const rows = results(query, $('category').value, budget, offers);
+  const category = $('category').value;
+  const rows = results(query, category, budget, offers, productFilters);
   const article = rows.map(({ product, best, ranked }) => {
     const card = node('article', null, 'card product');
+    const details = productDetails[product.id] ?? {};
+    const photo = details.photo;
     const image = node('img');
-    image.src = `./assets/category-${pictures[product.image]}.webp`;
-    image.alt = `Illustration de la catégorie ${product.category}`;
+    image.src = photo?.path ?? `./assets/category-${pictures[product.image]}.webp`;
+    image.alt = photo ? `${product.brand} ${product.model}` : '';
     image.width = 400;
     image.height = 533;
     image.loading = 'lazy';
+    card.append(image, node('small', photo ? 'Photo du modèle' : 'Illustration de la catégorie'));
+    if (photo) card.append(link(`Photo redimensionnée : ${photo.author} · ${photo.license}`, photo.source));
     const compare = node('button', 'Comparer les offres', 'outline');
     compare.setAttribute('aria-label', `Comparer les offres pour ${product.brand} ${product.model}`);
     compare.onclick = () => {
@@ -121,21 +144,31 @@ function renderProducts() {
       renderComparison(product);
       $('comparison').showModal();
     };
-    card.append(image, node('h3', `${product.brand} ${product.model}`), node('p', product.specs),
-      node('strong', best ? `${money(best.total)} · ${best.merchant}` : 'Prix comparable indisponible'),
-      node('small', best ? 'Livraison comprise' : `${ranked.length} offre(s) publiée(s)`), compare);
+    const technical = node('ul', null, 'technical');
+    for (const feature of productFeatures(product)) technical.append(node('li', feature));
+    card.append(node('h3', `${product.brand} ${product.model}`), node('p', product.specs));
+    if (technical.childElementCount) card.append(technical);
+    if (details.source) card.append(link('Fiche constructeur', details.source));
+    const firstAvailable = ranked.find(offer => offer.availability === 'in_stock');
+    card.append(
+      node('strong', best ? `${money(best.total)} · ${best.merchant}` : firstAvailable
+        ? `${money(firstAvailable.price)} · ${firstAvailable.merchant}` : 'Prix comparable indisponible'),
+      node('small', best ? 'Livraison comprise' : firstAvailable ? 'Frais de livraison inconnus' : `${ranked.length} offre(s) publiée(s)`),
+      compare,
+    );
     return card;
   });
   $('products').replaceChildren(...article);
   $('count').textContent = rows.length ? `${rows.length} produit(s)` : 'Aucun produit ne correspond à ces filtres.';
-  $('external-search').hidden = !query;
-  if (query) {
-    const search = encodeURIComponent(query);
-    $('external-search').replaceChildren(
-      link('Google Shopping', `https://shopping.google.com/search?q=${search}`),
-      link('Idealo', `https://www.idealo.fr/prechcat.html?q=${search}`),
-      link('PRIX MALIN', prixMalin),
-    );
+  const alternative = rows.length === 0 || rows.every(({ ranked }) =>
+    !ranked.some(offer => offer.availability === 'in_stock'));
+  $('external-search').hidden = !alternative;
+  if (alternative) {
+    const actions = node('div', null, 'actions');
+    const budgetText = budget !== null && Number.isFinite(budget) ? `moins de ${budget / 100} euros` : '';
+    actions.append(...searchLinks([query || category || 'high-tech', budgetText].filter(Boolean).join(' ')));
+    $('external-search').replaceChildren(node('h3', 'Rechercher chez les comparateurs'),
+      node('p', 'Vérifiez les prix et la livraison sur le site marchand.'), actions);
   }
 }
 
@@ -147,6 +180,7 @@ async function refreshOffers() {
     if (!response.ok) throw new Error('Flux indisponible');
     const data = await response.json();
     if (data?.version !== 1 || !Array.isArray(data.offers)) throw new Error('Flux invalide');
+    feedRows = data.offers.length;
     offers = readOffers(data);
     const stamp = Date.parse(data.refreshedAt);
     updatedAt = Number.isFinite(stamp) && stamp <= Date.now() ? stamp : null;
@@ -157,15 +191,27 @@ async function refreshOffers() {
     fetching = false;
   }
   offers = offers.filter(offer => offer.expires > Date.now());
-  let status = offers.length ? 'Offres marchandes issues de PRIX MALIN.' : 'Aucune offre marchande disponible actuellement.';
+  let status = offers.length ? `${offers.length} offre(s) marchande(s) issue(s) du flux public de PRIX MALIN.`
+    : feedAvailable && feedRows === 0 ? 'Le flux marchand de PRIX MALIN est vide pour le moment.'
+    : feedAvailable ? 'Aucun relevé marchand valide et à jour dans le flux PRIX MALIN.'
+    : 'Aucune offre marchande disponible pour le moment.';
   if (updatedAt && offers.length) status += ` Relevé du ${date.format(updatedAt)} (heure de Paris).`;
   if (!feedAvailable) status += ' Actualisation indisponible.';
   $('offer-status').textContent = status;
   renderProducts();
   if ($('comparison').open && activeProduct) renderComparison(activeProduct);
 }
-$('filters').onsubmit = event => { event.preventDefault(); renderProducts(); };
-$('filters').onreset = () => setTimeout(renderProducts, 0);
+$('filters').onsubmit = event => { event.preventDefault(); productFilters = undefined; renderProducts(); };
+$('filters').onreset = () => { productFilters = undefined; setTimeout(renderProducts, 0); };
+for (const shortcut of document.querySelectorAll('[data-shop-filter]')) {
+  shortcut.onclick = () => {
+    $('produit').value = '';
+    $('max').value = '';
+    $('category').value = shortcut.dataset.shopFilter;
+    productFilters = undefined;
+    renderProducts();
+  };
+}
 renderProducts();
 void refreshOffers();
 setInterval(() => { if (!document.hidden) void refreshOffers(); }, 5 * 60_000);
@@ -195,6 +241,7 @@ $('chat-form').onsubmit = async event => {
   const open = node('button', 'Voir la recherche dans le catalogue', 'outline');
   const snapshot = criteria;
   open.onclick = () => {
+    productFilters = snapshot.features;
     $('produit').value = snapshot.query;
     $('category').value = snapshot.category;
     $('max').value = snapshot.budget === null ? '' : snapshot.budget / 100;
@@ -203,6 +250,16 @@ $('chat-form').onsubmit = async event => {
     $('produit').focus({ preventScroll: true });
   };
   $('conversation').append(open);
+  if (!results(snapshot.query, snapshot.category, snapshot.budget, offers, snapshot.features).some(({ best }) => best)) {
+    const actions = node('div', null, 'actions');
+    const { wifi, wifi6e, cellular, storageGB, batteryHours } = snapshot.features ?? {};
+    actions.append(...searchLinks([
+      snapshot.query || snapshot.category, wifi && `Wi-Fi ${wifi6e ? '6E' : wifi}`, cellular,
+      storageGB && `${storageGB} Go`, batteryHours && `${batteryHours} h autonomie`,
+      snapshot.budget !== null && `moins de ${snapshot.budget / 100} euros`,
+    ].filter(Boolean).join(' ')).slice(0, 2));
+    $('conversation').append(actions);
+  }
   $('conversation').scrollTop = $('conversation').scrollHeight;
   if ($('ai-opt-in').hidden || !$('use-ai').checked) return;
   const submit = $('chat-form').querySelector('button');

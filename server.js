@@ -14,8 +14,8 @@ const fileTypes = new Map([
 ]);
 const routes = new Set([
   'index.html', 'informations.html', 'styles.css', 'app.js', 'assistant.js', 'offers.js',
-  'catalog.js', 'config.js', 'sw.js', 'manifest.webmanifest', 'assets/logo.svg', 'assets/hero.webp',
-  'assets/icon-192.png', 'assets/icon-512.png', ...[0, 1, 2, 3].map(index => `assets/category-${index}.webp`),
+  'catalog.js', 'product-details.js', 'config.js', 'sw.js', 'manifest.webmanifest', 'assets/logo.svg', 'assets/hero.webp',
+  'assets/icon-192.png', 'assets/icon-512.png', 'assets/galaxy-s24.webp', 'assets/iphone-16.webp', ...[0, 1, 2, 3].map(index => `assets/category-${index}.webp`),
 ]);
 const calls = [];
 let inFlight = 0;
@@ -77,7 +77,7 @@ async function ask(request, response) {
     const answer = data.output?.flatMap(item => item.content ?? [])
       .filter(part => part.type === 'output_text').map(part => part.text).join('\n').trim();
     // L'IA peut sortir de ses consignes. Rejeter les liens et montants explicites.
-    if (!answer || /https?:|www\.|€|\beuros?\b|\bEUR\b|\bprix\b|\bpromotions?\b/iu.test(answer)) {
+    if (!answer || /https?:|www\.|[€$£]|\b(?:euros?|dollars?|EUR|USD|GBP)\b|\bprix\b|\bpromotions?\b/iu.test(answer)) {
       return json(response, 502, { error: 'Conseil général indisponible' });
     }
     return json(response, 200, { answer: answer.slice(0, 1200) });

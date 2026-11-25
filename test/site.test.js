@@ -52,8 +52,21 @@ test('Conversation locale avec relance et valeurs françaises', () => {
   assert.equal(interpret('Samsung Galaxy S24').category, 'Smartphones');
 });
 
-test('Affiliation et téléchargements restent inactifs sans configuration', () => {
-  assert.deepEqual(downloads, {});
+test('Critères techniques sourcés et alternatives par marque', () => {
+  const criteria = interpret('Un iPhone avec Wi-Fi 7, 5G et 128 Go sous 700 €');
+  assert.equal(criteria.budget, 70_000);
+  assert.equal(criteria.query, 'iPhone');
+  assert.deepEqual(criteria.features, { wifi: 7, wifi6e: false, cellular: '5G', storageGB: 128 });
+  assert.equal(results(criteria.query, criteria.category, null, [], criteria.features).length, 1);
+  assert.match(localReply(criteria, []), /Wi-Fi 7/);
+  assert.equal(results('Samsung ou Apple', 'Smartphones', null, []).length, 2);
+  assert.equal(results('', 'Audio', null, [], { batteryHours: 30 }).length, 1);
+  assert.equal(results('iPhone', 'Smartphones', null, [], { storageGB: 256 }).length, 0);
+});
+
+test('Affiliation inactive et installateurs publics PRIX MALIN', () => {
+  assert.match(downloads['PRIX MALIN'].Android, /PRIX-MALIN-Android\.apk$/);
+  assert.match(downloads['PRIX MALIN'].Windows, /PRIX-MALIN-Windows-x64\.exe$/);
   assert.deepEqual(awin, {});
 });
 
