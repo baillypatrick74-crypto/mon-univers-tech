@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: mon-univers-tech
+    runtime: node
+    plan: starter
+    branch: feature/mon-univers-tech-v2
+    autoDeployTrigger: off
+    buildCommand: npm test
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22
