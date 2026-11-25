@@ -1,6 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-import { accessSync, constants, closeSync, fsyncSync, openSync, readFileSync, statSync, writeSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
 import { products } from './catalog.js';
 import { productFeatures } from './product-details.js';
 
@@ -33,72 +30,21 @@ function limit(value, fallback, max) {
   return /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= max ? Number(value) : null;
 }
 
-export function createAssistant({ env, publicUrl, now = () => new Date() }) {
-  const perMinute = limit(env.OPENAI_REQUESTS_PER_MINUTE, 3, 10);
-  const perDay = limit(env.OPENAI_REQUESTS_PER_DAY, 25, 1000);
-  const perMonth = limit(env.OPENAI_REQUESTS_PER_MONTH, 300, 10_000);
+export function createAssistant({ env, publicUrl, quota }) {
   const outputTokens = limit(env.OPENAI_MAX_OUTPUT_TOKENS, 220, 512);
-  const directory = env.OPENAI_USAGE_DIR;
   const key = env.OPENAI_API_KEY?.trim();
   const model = env.OPENAI_MODEL?.trim() || 'gpt-4o-mini';
-  const tokenHash = /^[a-f0-9]{64}$/i.test(env.OPENAI_PILOT_TOKEN_SHA256 ?? '')
-    ? Buffer.from(env.OPENAI_PILOT_TOKEN_SHA256, 'hex') : null;
-  const configured = Boolean(env.OPENAI_ENABLED === 'true' && publicUrl && key && tokenHash && directory && isAbsolute(directory)
-    && perMinute && perDay && perMonth && outputTokens && outputTokens >= 100
-    && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(model));
-  function enabled() {
-    if (!configured) return false;
-    try {
-      accessSync(directory, constants.R_OK | constants.W_OK | constants.X_OK);
-      return statSync(directory).isDirectory();
-    } catch { return false; }
-  }
-
-  function authenticated(authorization) {
-    const credential = /^Bearer ([a-f0-9]{64})$/i.exec(authorization ?? '')?.[1];
-    if (!credential || !tokenHash) return false;
-    return timingSafeEqual(createHash('sha256').update(credential).digest(), tokenHash);
-  }
-
-  const calls = [];
-  let inFlight = false;
-
-  function reserve(instant) {
-    // Le disque Render survit aux redémarrages. Un appel est réservé avant l'envoi.
-    const day = instant.toISOString().slice(0, 10);
-    const month = day.slice(0, 7);
-    if (!statSync(directory).isDirectory()) throw new Error('Dossier de quota indisponible');
-    const path = join(directory, `openai-${month}.log`);
-    const size = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
-    if (size > 110_000) throw new Error('Journal de quota invalide');
-    const fd = openSync(path, 'a+', 0o600);
-    try {
-      const log = readFileSync(fd, 'utf8');
-      const entries = log ? log.trimEnd().split('\n') : [];
-      if ((log && !log.endsWith('\n')) || entries.some(entry => !/^\d{4}-\d{2}-\d{2}$/.test(entry) || !entry.startsWith(month))) {
-        throw new Error('Journal de quota invalide');
-      }
-      if (entries.length >= perMonth || entries.filter(entry => entry === day).length >= perDay) return false;
-      if (writeSync(fd, day + '\n') !== 11) throw new Error('Écriture du quota incomplète');
-      fsyncSync(fd);
-      return true;
-    } finally {
-      closeSync(fd);
-    }
-  }
+  const enabled = Boolean(env.OPENAI_ENABLED === 'true' && publicUrl && key && quota.configured
+    && outputTokens >= 100 && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(model));
 
   async function ask(message) {
-    if (!enabled()) return { status: 503 };
-    const instant = now();
-    while (calls[0] <= +instant - 60_000) calls.shift();
-    if (inFlight || calls.length >= perMinute) return { status: 429, retryAfter: 60 };
+    if (!enabled) return { status: 503 };
     try {
-      if (!reserve(instant)) return { status: 429 };
+      const reserved = await quota.reserve();
+      if (reserved.status !== 200) return reserved;
     } catch {
       return { status: 503 };
     }
-    calls.push(+instant);
-    inFlight = true;
     try {
       const upstream = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(11_000),
@@ -126,10 +72,8 @@ export function createAssistant({ env, publicUrl, now = () => new Date() }) {
       return { status: 200, answer: [...(lines.length ? lines : [noSelection]), topics[choice.conseil]].join('\n') };
     } catch {
       return { status: 502 };
-    } finally {
-      inFlight = false;
     }
   }
 
-  return { enabled, authenticated, ask };
+  return { enabled, ask };
 }

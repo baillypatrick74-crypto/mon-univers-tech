@@ -2,17 +2,12 @@ services:
   - type: web
     name: mon-univers-tech
     runtime: node
-    plan: starter
+    plan: free
     branch: feature/mon-univers-tech-v2
     autoDeployTrigger: off
-    numInstances: 1
     buildCommand: npm test
     startCommand: npm start
     healthCheckPath: /healthz
-    disk:
-      name: assistant-quota
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 22
@@ -20,7 +15,5 @@ services:
         value: "false"
       - key: OPENAI_ENABLED
         value: "false"
-      - key: OPENAI_USAGE_DIR
-        value: /var/data
       - key: OPENAI_MODEL
         value: gpt-4o-mini

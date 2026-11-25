@@ -1,13 +1,16 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { createAssistant } from './assistant-api.js';
+import { clearOwnerCookie, createSupabase } from './supabase.js';
 
 const { PORT = 4173, HOST = '0.0.0.0', PUBLIC_URL } = process.env;
 const configuredUrl = URL.parse(PUBLIC_URL ?? '');
 const publicUrl = configuredUrl?.protocol === 'https:' && configuredUrl.pathname === '/'
   && !configuredUrl.username && !configuredUrl.password && !configuredUrl.search && !configuredUrl.hash
   ? configuredUrl : null;
-const assistant = createAssistant({ env: process.env, publicUrl });
+const supabase = createSupabase(process.env);
+const assistant = createAssistant({ env: process.env, publicUrl, quota: supabase });
+const loginAttempts = [];
 const indexing = Boolean(publicUrl && process.env.SEO_INDEXING === 'true');
 const fileTypes = new Map([
   ['html', 'text/html; charset=utf-8'], ['css', 'text/css; charset=utf-8'],
@@ -25,16 +28,11 @@ function json(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
-async function ask(request, response) {
-  if (request.method === 'GET') return json(response, 200, { enabled: assistant.enabled() });
-  if (request.method !== 'POST') return json(response, 405, { error: 'Méthode non autorisée' });
-  if (!assistant.enabled()) return json(response, 503, { error: 'IA externe désactivée' });
-  if (request.headers.origin !== publicUrl.origin || request.headers['sec-fetch-site'] === 'cross-site') {
-    return json(response, 403, { error: 'Origine refusée' });
-  }
-  if (!assistant.authenticated(request.headers.authorization)) {
-    return json(response, 401, { error: 'Accès réservé aux testeurs' });
-  }
+function sameOrigin(request) {
+  return request.headers.origin === publicUrl?.origin && request.headers['sec-fetch-site'] !== 'cross-site';
+}
+
+async function readBody(request, response) {
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) {
     return json(response, 415, { error: 'Format non pris en charge' });
   }
@@ -48,10 +46,69 @@ async function ask(request, response) {
     }
     chunks.push(chunk);
   }
-  let payload;
-  try { payload = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-  catch { return json(response, 400, { error: 'JSON invalide' }); }
-  const message = payload?.message;
+  try {
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (body && typeof body === 'object' && !Array.isArray(body)) return body;
+  } catch {}
+  json(response, 400, { error: 'JSON invalide' });
+}
+
+async function ownerSession(request, response) {
+  if (request.method === 'GET') {
+    if (!assistant.enabled) return json(response, 200, { enabled: false });
+    try {
+      const signedIn = await supabase.authenticated(request.headers.cookie);
+      return json(response, 200, { enabled: true, signedIn });
+    } catch {
+      return json(response, 503, { error: 'Authentification indisponible' });
+    }
+  }
+  if (!['POST', 'DELETE'].includes(request.method)) return json(response, 405, { error: 'Méthode non autorisée' });
+  if (!publicUrl || !sameOrigin(request)) return json(response, 403, { error: 'Origine refusée' });
+  if (request.method === 'DELETE') {
+    response.setHeader('Set-Cookie', clearOwnerCookie());
+    return json(response, 200, { signedIn: false });
+  }
+  if (!assistant.enabled) return json(response, 503, { error: 'IA externe désactivée' });
+  const body = await readBody(request, response);
+  if (!body) return;
+  const { email, password } = body;
+  if (typeof email !== 'string' || !email.trim() || email.length > 254
+      || typeof password !== 'string' || !password || password.length > 256) {
+    return json(response, 400, { error: 'Identifiants invalides' });
+  }
+  const now = Date.now();
+  while (loginAttempts[0] <= now - 60_000) loginAttempts.shift();
+  if (loginAttempts.length >= 5) {
+    response.setHeader('Retry-After', '60');
+    return json(response, 429, { error: 'Réessayez plus tard' });
+  }
+  loginAttempts.push(now);
+  try {
+    const cookie = await supabase.login(email.trim(), password);
+    if (!cookie) return json(response, 401, { error: 'Accès réservé au propriétaire' });
+    response.setHeader('Set-Cookie', cookie);
+    return json(response, 200, { signedIn: true });
+  } catch {
+    return json(response, 503, { error: 'Authentification indisponible' });
+  }
+}
+
+async function ask(request, response) {
+  if (request.method === 'GET') return json(response, 200, { enabled: assistant.enabled });
+  if (request.method !== 'POST') return json(response, 405, { error: 'Méthode non autorisée' });
+  if (!assistant.enabled) return json(response, 503, { error: 'IA externe désactivée' });
+  if (!sameOrigin(request)) return json(response, 403, { error: 'Origine refusée' });
+  try {
+    if (!await supabase.authenticated(request.headers.cookie)) {
+      return json(response, 401, { error: 'Accès réservé au propriétaire' });
+    }
+  } catch {
+    return json(response, 503, { error: 'Authentification indisponible' });
+  }
+  const body = await readBody(request, response);
+  if (!body) return;
+  const message = body.message;
   if (typeof message !== 'string' || !message.trim() || message.length > 240) {
     return json(response, 400, { error: 'Message invalide' });
   }
@@ -70,6 +127,7 @@ const server = createServer({ requestTimeout: 20_000, headersTimeout: 10_000 }, 
   try {
     const { pathname } = new URL(request.url, 'http://localhost');
     if (pathname === '/healthz' && request.method === 'GET') return json(response, 200, { ok: true });
+    if (pathname === '/api/assistant/session') return await ownerSession(request, response);
     if (pathname === '/api/assistant') return await ask(request, response);
     if (!['GET', 'HEAD'].includes(request.method)) return json(response, 405, { error: 'Méthode non autorisée' });
     if (pathname === '/robots.txt') {

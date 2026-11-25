@@ -84,10 +84,19 @@
         <div id="conversation" class="conversation" role="log" aria-label="Conversation">
           <p class="message">Quel produit cherchez-vous ? Par exemple « comparer les casques à moins de 200 € ».</p>
         </div>
+        <details id="owner-access" hidden>
+          <summary>Accès propriétaire</summary>
+          <form id="owner-form">
+            <label>Adresse e-mail<input id="owner-email" type="email" maxlength="254" autocomplete="username" required></label>
+            <label>Mot de passe<input id="owner-password" type="password" maxlength="256" autocomplete="current-password" required></label>
+            <button type="submit">Se connecter</button>
+          </form>
+          <button type="button" id="owner-logout" hidden>Se déconnecter</button>
+          <p id="owner-status" role="status"></p>
+        </details>
         <form id="chat-form">
           <label>Votre message<input id="message" required maxlength="240" placeholder="Ex. iPhone avec Wi-Fi 7 et 128 Go sous 700 €"></label>
           <label class="opt-in" id="ai-opt-in" hidden><input type="checkbox" id="use-ai"> Utiliser OpenAI pour obtenir une suggestion technique issue du catalogue. Votre message est transmis à OpenAI.</label>
-          <label id="pilot-access" hidden>Code d’accès testeur<input id="pilot-code" type="password" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
           <button type="submit">Envoyer</button>
         </form>
       </div>

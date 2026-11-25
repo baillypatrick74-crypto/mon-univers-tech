@@ -1,11 +1,8 @@
-import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { interpret, localReply, results } from '../assistant.js';
 import { readOffers } from '../offers.js';
@@ -123,19 +120,57 @@ test('Pages, ressources PWA, mentions légales et SEO', async t => {
   }
 });
 
+const owner = '77d785ea-6f25-4fbe-988c-bd1164f54e1a';
+const enabledEnv = {
+  PUBLIC_URL: 'https://tech.example', OPENAI_API_KEY: 'test-only', OPENAI_ENABLED: 'true',
+  SUPABASE_URL: 'https://mutmock.supabase.co', SUPABASE_OWNER_ID: owner,
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test-only', SUPABASE_SECRET_KEY: 'sb_secret_test-only',
+};
+const jwt = (signature, age = 0) => {
+  const now = Math.floor(Date.now() / 1000);
+  return 'header.' + Buffer.from(JSON.stringify({ iat: now - age, exp: now + 3600 })).toString('base64url') + '.' + signature;
+};
+const ownerToken = jwt('owner');
+const otherToken = jwt('other');
+const sessionCookie = '__Host-mut-owner=' + ownerToken;
 const mockResponses = `
-  globalThis.fetch = async (url, options) => {
+  const owner = '${owner}';
+  let reserved = false;
+  globalThis.fetch = async (value, options) => {
+    const url = new URL(value);
+    const headers = options.headers;
+    if (url.origin === 'https://mutmock.supabase.co') {
+      if (url.pathname === '/auth/v1/token') {
+        if (url.searchParams.get('grant_type') !== 'password' || headers.apikey !== 'sb_publishable_test-only') throw Error('Auth');
+        const { email, password } = JSON.parse(options.body);
+        if (password !== 'test-password') return Response.json({}, { status: 400 });
+        return Response.json({ user: { id: email === 'owner@example.test' ? owner : 'another-user', email_confirmed_at: 'date' },
+          access_token: '${ownerToken}', expires_in: 3600, refresh_token: 'private-refresh-token' });
+      }
+      if (url.pathname === '/auth/v1/user') {
+        if (headers.apikey !== 'sb_publishable_test-only') throw Error('User');
+        if (headers.Authorization === 'Bearer ${ownerToken}') return Response.json({ id: owner, email_confirmed_at: 'date' });
+        if (headers.Authorization === 'Bearer ${otherToken}') return Response.json({ id: 'another-user', email_confirmed_at: 'date' });
+        return Response.json({}, { status: 401 });
+      }
+      if (url.pathname === '/rest/v1/rpc/mut_reserve_assistant_call') {
+        if (headers.apikey !== 'sb_secret_test-only' || options.method !== 'POST' || options.body !== '{}') throw Error('RPC');
+        if (process.env.MOCK_QUOTA === 'down') return Response.json({}, { status: 503 });
+        if (process.env.MOCK_QUOTA === 'limit') return Response.json({ allowed: false, retry_after: 46 });
+        if (process.env.MOCK_QUOTA === 'malformed') return Response.json({ allowed: 'true' });
+        reserved = true;
+        return Response.json({ allowed: true });
+      }
+    }
+    if (url.href !== 'https://api.openai.com/v1/responses' || !reserved
+      || headers.Authorization !== 'Bearer test-only' || process.env.MOCK_QUOTA) throw Error('Appel OpenAI inattendu');
+    reserved = false;
     const body = JSON.parse(options.body);
     const input = JSON.parse(body.input);
-    if (url !== 'https://api.openai.com/v1/responses'
-        || options.headers.Authorization !== 'Bearer test-only' || body.store !== false
-        || body.model !== (process.env.OPENAI_MODEL || 'gpt-4o-mini') || body.max_output_tokens !== 220
-        || body.text.format.strict !== true || input.catalogue.length !== 8
-        || input.catalogue.some(item => 'price' in item) || typeof input.question !== 'string') {
+    if (body.model !== 'gpt-4o-mini' || body.store !== false || body.max_output_tokens !== 220
+        || body.text.format.strict !== true || input.catalogue.length !== 8 || input.catalogue.some(item => 'price' in item)
+        || JSON.stringify(body).includes('test-password') || JSON.stringify(body).includes('${ownerToken}')) {
       throw Error('Requête fournisseur inattendue');
-    }
-    if (options.headers.Authorization.includes('abababab') || JSON.stringify(input).includes('abababab')) {
-      throw Error('Code testeur transmis au fournisseur');
     }
     if (input.question === 'erreur') return Response.json({ error: 'SECRET DU FOURNISSEUR' }, { status: 401 });
     const selection = input.question === 'montant'
@@ -147,73 +182,67 @@ const mockResponses = `
   await import('./server.js');
 `;
 
-async function quotaDirectory(t) {
-  const path = await mkdtemp(join(tmpdir(), 'mut-quota-'));
-  t.after(() => rm(path, { recursive: true, force: true }));
-  return path;
-}
-
-const pilot = 'ab'.repeat(32);
-const pilotHash = createHash('sha256').update(pilot).digest('hex');
-const enabledEnv = { PUBLIC_URL: 'https://tech.example', OPENAI_API_KEY: 'test-only', OPENAI_ENABLED: 'true', OPENAI_PILOT_TOKEN_SHA256: pilotHash };
-function ask(origin, message, site = 'https://tech.example', credential = pilot) {
+function ask(origin, message, cookie = sessionCookie, site = 'https://tech.example') {
   return fetch(origin + '/api/assistant', {
-    method: 'POST', headers: { Origin: site, 'Content-Type': 'application/json', ...(credential ? { Authorization: `Bearer ${credential}` } : {}) },
+    method: 'POST', headers: { Origin: site, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
     body: JSON.stringify({ message }),
   });
 }
 
-test('API Responses simulée en français et réponse fondée sur le catalogue', async t => {
-  const origin = await startServer(t, { ...enabledEnv, OPENAI_MODEL: 'test-model', OPENAI_USAGE_DIR: await quotaDirectory(t) }, mockResponses);
-  assert.deepEqual(await (await fetch(origin + '/healthz')).json(), { ok: true });
-  assert.equal((await fetch(origin + '/assistant-api.js')).status, 404);
-  assert.deepEqual(await (await fetch(origin + '/api/assistant')).json(), { enabled: true });
-  assert.equal((await ask(origin, 'casque', 'https://elsewhere.example')).status, 403);
-  assert.equal((await ask(origin, 'casque', 'https://tech.example', '')).status, 401);
-  assert.equal((await ask(origin, 'casque', 'https://tech.example', 'cd'.repeat(32))).status, 401);
+test('Session sécurisée limitée au propriétaire Supabase', async t => {
+  const origin = await startServer(t, enabledEnv, mockResponses);
+  const endpoint = origin + '/api/assistant/session';
+  const login = (email, password, site = 'https://tech.example') => fetch(endpoint, {
+    method: 'POST', headers: { Origin: site, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  assert.deepEqual(await (await fetch(endpoint)).json(), { enabled: true, signedIn: false });
+  assert.equal((await login('owner@example.test', 'test-password', 'https://elsewhere.example')).status, 403);
+  assert.equal((await login('other@example.test', 'test-password')).status, 401);
+  assert.equal((await login('owner@example.test', 'incorrect')).status, 401);
+  const signedIn = await login('owner@example.test', 'test-password');
+  assert.deepEqual(await signedIn.json(), { signedIn: true });
+  assert.equal(signedIn.headers.get('set-cookie'), sessionCookie + '; Max-Age=600; Path=/; Secure; HttpOnly; SameSite=Strict');
+  assert.deepEqual(await (await fetch(endpoint, { headers: { Cookie: sessionCookie } })).json(), { enabled: true, signedIn: true });
+  const signedOut = await fetch(endpoint, { method: 'DELETE', headers: { Origin: 'https://tech.example' } });
+  assert.match(signedOut.headers.get('set-cookie'), /Max-Age=0/);
+});
+
+test('OpenAI simulé et réservation du quota avant tout appel', async t => {
+  const origin = await startServer(t, enabledEnv, mockResponses);
+  assert.equal((await fetch(origin + '/supabase.js')).status, 404);
+  assert.equal((await ask(origin, 'casque', sessionCookie, 'https://elsewhere.example')).status, 403);
+  assert.equal((await ask(origin, 'casque', '')).status, 401);
+  assert.equal((await ask(origin, 'casque', '__Host-mut-owner=' + otherToken)).status, 401);
+  assert.equal((await ask(origin, 'casque', '__Host-mut-owner=' + jwt('invalid'))).status, 401);
+  assert.equal((await ask(origin, 'casque', '__Host-mut-owner=' + jwt('owner', 601))).status, 401);
   assert.equal((await ask(origin, 'a'.repeat(241))).status, 400);
   assert.equal((await ask(origin, 'a'.repeat(2200))).status, 413);
   assert.equal((await ask(origin, 'montant')).status, 502);
   const failure = await ask(origin, 'erreur');
   assert.equal(failure.status, 502);
   assert.doesNotMatch(await failure.text(), /SECRET DU FOURNISSEUR/);
-  const answer = await (await ask(origin, 'Quel casque recommandez-vous ?')).json();
-  assert.match(answer.answer, /Sony WH-1000XM5/);
-  assert.match(answer.answer, /Comparez le confort/);
-  assert.doesNotMatch(answer.answer, /€|euros|99/);
-  const limited = await ask(origin, 'casque');
-  assert.equal(limited.status, 429);
-  assert.equal(limited.headers.get('retry-after'), '60');
+  assert.match((await (await ask(origin, 'Quel casque recommandez-vous ?')).json()).answer, /Sony WH-1000XM5/);
 });
 
-test('Quota journalier et mensuel conservé après redémarrage', async t => {
-  const directory = await quotaDirectory(t);
-  const env = { ...enabledEnv, OPENAI_USAGE_DIR: directory, OPENAI_REQUESTS_PER_DAY: '1', OPENAI_REQUESTS_PER_MONTH: '2' };
-  const first = await startServer(t, env, mockResponses);
-  assert.equal((await ask(first, 'casque')).status, 200);
-  const afterRestart = await startServer(t, env, mockResponses);
-  assert.equal((await ask(afterRestart, 'casque')).status, 429);
-  const monthly = await startServer(t, { ...env, OPENAI_REQUESTS_PER_DAY: '3' }, mockResponses);
-  assert.equal((await ask(monthly, 'casque')).status, 200);
-  assert.equal((await ask(monthly, 'casque')).status, 429);
-  const filenames = await readdir(directory);
-  assert.equal(filenames.length, 1);
-  assert.match(await readFile(join(directory, filenames[0]), 'utf8'), /^(?:\d{4}-\d{2}-\d{2}\n){2}$/);
+test('Plafond, panne et réponse invalide Supabase empêchent les appels payants', async t => {
+  for (const [mode, status] of [['limit', 429], ['down', 503], ['malformed', 503]]) {
+    const origin = await startServer(t, { ...enabledEnv, MOCK_QUOTA: mode }, mockResponses);
+    const result = await ask(origin, 'casque');
+    assert.equal(result.status, status);
+    if (mode === 'limit') assert.equal(result.headers.get('retry-after'), '46');
+  }
 });
 
-test('Activation explicite et refus d’appeler OpenAI si le journal est inaccessible', async t => {
-  const directory = await quotaDirectory(t);
-  const disabled = await startServer(t, { ...enabledEnv, OPENAI_ENABLED: 'false', OPENAI_USAGE_DIR: directory }, mockResponses);
-  assert.deepEqual(await (await fetch(disabled + '/api/assistant')).json(), { enabled: false });
-  const base = await fetch(disabled + '/');
-  assert.equal(base.headers.get('x-robots-tag'), 'noindex');
-  assert.equal((await fetch(disabled + '/sitemap.xml')).status, 404);
-  const missingAuth = await startServer(t, { ...enabledEnv, OPENAI_PILOT_TOKEN_SHA256: '', OPENAI_USAGE_DIR: directory }, mockResponses);
-  assert.deepEqual(await (await fetch(missingAuth + '/api/assistant')).json(), { enabled: false });
-  const broken = await startServer(t, { ...enabledEnv, OPENAI_USAGE_DIR: join(directory, 'absent') }, mockResponses);
-  assert.deepEqual(await (await fetch(broken + '/api/assistant')).json(), { enabled: false });
-  assert.equal((await ask(broken, 'casque')).status, 503);
-  assert.deepEqual(await readdir(directory), []);
+test('L’activation nécessite une configuration complète et explicite', async t => {
+  for (const override of [{ OPENAI_ENABLED: 'false' }, { SUPABASE_OWNER_ID: '' }, { SUPABASE_SECRET_KEY: '' }]) {
+    const origin = await startServer(t, { ...enabledEnv, ...override }, mockResponses);
+    assert.deepEqual(await (await fetch(origin + '/api/assistant')).json(), { enabled: false });
+    assert.equal((await ask(origin, 'casque')).status, 503);
+  }
+  const origin = await startServer(t, { ...enabledEnv, OPENAI_ENABLED: 'false' }, mockResponses);
+  assert.equal((await fetch(origin + '/')).headers.get('x-robots-tag'), 'noindex');
+  assert.equal((await fetch(origin + '/sitemap.xml')).status, 404);
 });
 
 test('Thème système, préférence manuelle et restauration de la préférence', async () => {
@@ -254,7 +283,7 @@ test('PWA V3 met en cache les ressources du site et laisse les appels IA hors ca
   runInNewContext(await readFile('sw.js', 'utf8'), {
     URL, Request: class { constructor(path) { return new URL(path, scope); } },
     self: { registration: { scope }, clients: { claim: async () => {} }, addEventListener: (name, fn) => { handlers[name] = fn; } },
-    caches: { open: async () => cache, keys: async () => ['mon-univers-tech-v2.1.1', 'autre-site'],
+    caches: { open: async () => cache, keys: async () => ['mon-univers-tech-v3.0.0', 'autre-site'],
       delete: async name => deleted.push(name) },
     fetch: async () => { throw Error('hors ligne'); },
   });
@@ -265,12 +294,14 @@ test('PWA V3 met en cache les ressources du site et laisse les appels IA hors ca
   assert.ok(requests.includes(scope + 'assets/prix-malin.png'));
   handlers.activate({ waitUntil: value => { pending = value; } });
   await pending;
-  assert.deepEqual(deleted, ['mon-univers-tech-v2.1.1']);
+  assert.deepEqual(deleted, ['mon-univers-tech-v3.0.0']);
   let result;
   const respondWith = value => { result = value; };
   handlers.fetch({ request: { method: 'POST', url: scope + 'api/assistant' }, respondWith });
   assert.equal(result, undefined);
   handlers.fetch({ request: { method: 'GET', url: scope + 'api/assistant' }, respondWith });
+  assert.equal(result, undefined);
+  handlers.fetch({ request: { method: 'GET', url: scope + 'api/assistant/session' }, respondWith });
   assert.equal(result, undefined);
   handlers.fetch({ request: { method: 'GET', url: scope }, respondWith });
   assert.match(await (await result).text(), /hors ligne/);

@@ -1,4 +1,4 @@
-# MON UNIVERS TECH V3.0
+# MON UNIVERS TECH V3.1
 
 Site en français avec catalogue PRIX MALIN, comparaison des offres, assistant d’achat local et installation PWA. Le dossier peut être servi statiquement. Le serveur Node ajoute l’API facultative et la configuration SEO du domaine final.
 
@@ -38,46 +38,41 @@ La V2 lit le fichier public `offers.json` de PRIX MALIN au chargement, au retour
 - Dans `awin`, configurer pour chaque marchand approuvé une entrée avec `enabled: true` et les champs suivants. `merchantId` est l’identifiant annonceur, `publisherId` l’identifiant éditeur et `domains` une liste des noms d’hôte marchands approuvés pour le deep linking. Les identifiants utilisés dans les liens sont publics. Les jetons d’accès AWIN et les identifiants de flux privés restent sur les services qui les utilisent.
 - Remplir `informations.html` avec l’identité et les coordonnées de l’éditeur, de la direction de publication et de l’hébergeur avant une ouverture commerciale. Préciser le traitement des données et les modalités d’exercice des droits avant d’activer l’IA externe.
 
-## Préparer l’hébergement commercial
+## Render gratuit et publication manuelle
 
-`render.yaml` propose un service Node sur un plan payant Render Starter, avec déploiements automatiques désactivés. Relier le dépôt à un compte Render, confirmer le plan et ses conditions commerciales, configurer le domaine HTTPS et lancer le déploiement manuellement après validation. Lorsque la branche de production sera approuvée, adapter l’entrée `branch` du manifeste à la branche retenue. Le dépôt GitHub Pages peut continuer à servir la version statique existante.
+Le Blueprint `render.yaml` utilise le plan **Free**, sans disque Render, avec `autoDeployTrigger: off` et `OPENAI_ENABLED=false`. Le stockage des quotas est séparé du serveur Render. Le plan gratuit Render peut se mettre en veille et son premier accès après inactivité peut être plus lent.
 
-Configurer `PUBLIC_URL` avec l’origine HTTPS finale, sans sous-chemin. Le serveur s’en sert pour générer la balise canonique. Après validation de la mise en ligne et des mentions, passer `SEO_INDEXING=true` pour publier le sitemap et autoriser l’indexation, puis soumettre `/sitemap.xml` dans Google Search Console. Par défaut Render envoie `X-Robots-Tag: noindex`. En mode statique, ajouter les URL canoniques et le sitemap du domaine retenu au moment de la publication.
+**Pour un service Render déjà en ligne**, dans le [tableau de bord Render](https://dashboard.render.com/), ouvrir le service **mon-univers-tech → Settings → Build & Deploy → Auto-Deploy → Edit**, sélectionner **Off** et enregistrer. Revenir à ce réglage pour confirmer **Off** avant tout push vers la branche surveillée ou **Manual Deploy**. Le fichier Blueprint de la branche ne désactive pas rétroactivement un service existant tant que sa configuration n’a pas été appliquée. [Documentation Render](https://render.com/docs/deploys#automatic-deploys)
 
-## Activer l’assistant OpenAI sur Render
+Après validation des mentions et du domaine, `PUBLIC_URL` contient l’origine HTTPS du site, sans sous-chemin. Passer `SEO_INDEXING=true` uniquement si l’indexation est souhaitée. Le serveur publie alors `/sitemap.xml` pour Google Search Console. Le mode local fonctionne sans Supabase ni OpenAI.
 
-1. Dans [Render](https://dashboard.render.com/), choisir **New → Blueprint**, connecter le dépôt `baillypatrick74-crypto/mon-univers-tech` et sélectionner `feature/mon-univers-tech-v2` comme branche source du Blueprint. Examiner le prix de Starter et du disque persistant de 1 Go avant de créer le service. Le manifeste démarre le mode local, utilise une seule instance et désactive les déploiements automatiques.
-2. Après le premier déploiement, vérifier que `/healthz` renvoie `{"ok":true}` et que `/api/assistant` renvoie `{"enabled":false}`. Copier l’origine HTTPS affichée par Render, sans chemin. Un domaine personnalisé déjà configuré et vérifié convient aussi.
-3. Dans [OpenAI Platform](https://platform.openai.com/), créer un projet dédié, vérifier la facturation et créer une [clé de projet](https://platform.openai.com/api-keys) autorisée à utiliser l’API Responses. Limiter les permissions au nécessaire quand la configuration du projet le permet. Configurer un budget d’alerte dans les paramètres du projet. Le budget d’alerte OpenAI est indicatif, les limites ci-dessous sont appliquées par le serveur.
-4. Générer un code testeur aléatoire et son empreinte avec Node :
+## Préparer Supabase Free, puis activer OpenAI après accord
 
-   ```sh
-   node -e "const c=require('node:crypto'), t=c.randomBytes(32).toString('hex'); console.log('Code testeur:', t); console.log('Empreinte SHA-256:',c.createHash('sha256').update(t).digest('hex'))"
-   ```
-
-   Conserver le code dans un gestionnaire de secrets et le transmettre uniquement aux testeurs autorisés. Render reçoit seulement l’empreinte. Changer l’empreinte et redéployer pour révoquer le code commun.
-
-5. Dans le service Render, ouvrir **Environment → Add Environment Variable**. Renseigner les valeurs suivantes, puis utiliser **Save, rebuild, and deploy**.
+1. Dans [Supabase](https://supabase.com/dashboard), créer ou sélectionner un projet **Free**. Dans **SQL Editor**, exécuter [la migration de quotas](supabase/migrations/202611250001_assistant_quota.sql). Elle crée un compteur unique, privé et accessible en écriture uniquement par la fonction de réservation du serveur.
+2. Dans **Authentication → Users**, créer le compte e-mail du propriétaire avec un mot de passe fort et unique. Confirmer son adresse, puis relever son **User ID** (UUID). Dans les réglages Auth, désactiver les inscriptions publiques pour ce projet dédié. Conserver l’authentification par e-mail et mot de passe et ne créer aucun autre compte pour le site.
+3. Dans **Project Settings → API Keys**, relever l’URL du projet, la clé **Publishable** et une clé **Secret** dédiée à ce serveur. La clé Secret a des droits privilégiés sur le projet. La saisir uniquement dans l’environnement Render et la révoquer en cas d’exposition.
+4. Dans **Render → mon-univers-tech → Environment**, définir les variables ci-dessous et conserver `OPENAI_ENABLED=false`. Configurer un service **Free** et confirmer **Auto-Deploy: Off** avant un déploiement manuel autorisé.
 
    | Variable | Valeur |
    | --- | --- |
-   | `PUBLIC_URL` | Origine HTTPS exacte du service |
-   | `OPENAI_API_KEY` | Clé du projet saisie uniquement dans Render |
-   | `OPENAI_ENABLED` | `true` |
-   | `OPENAI_PILOT_TOKEN_SHA256` | Empreinte SHA-256 du code testeur |
-   | `OPENAI_USAGE_DIR` | `/var/data`, le disque persistant du Blueprint |
-   | `OPENAI_MODEL` | `gpt-4o-mini`, ou un modèle économique autorisé prenant en charge les sorties structurées |
-   | `OPENAI_REQUESTS_PER_MINUTE` | Facultatif, `3` par défaut, maximum `10` |
-   | `OPENAI_REQUESTS_PER_DAY` | Facultatif, `25` par défaut, maximum `1000` |
-   | `OPENAI_REQUESTS_PER_MONTH` | Facultatif, `300` par défaut, maximum `10000` |
-   | `OPENAI_MAX_OUTPUT_TOKENS` | Facultatif, `220` par défaut, de `100` à `512` |
+   | `PUBLIC_URL` | Origine HTTPS exacte du site Render ou du domaine choisi |
+   | `SUPABASE_URL` | URL du projet, `https://<projet>.supabase.co` |
+   | `SUPABASE_OWNER_ID` | UUID du compte propriétaire confirmé |
+   | `SUPABASE_PUBLISHABLE_KEY` | Clé Supabase `sb_publishable_…`, utilisée côté serveur |
+   | `SUPABASE_SECRET_KEY` | Clé Supabase `sb_secret_…`, utilisée uniquement pour le quota |
+   | `OPENAI_ENABLED` | `false` jusqu’à l’accord d’activation |
+   | `OPENAI_MODEL` | `gpt-4o-mini` par défaut |
+   | `OPENAI_MAX_OUTPUT_TOKENS` | Facultatif, `220` par défaut, plage `100` à `512` |
+   | `OPENAI_API_KEY` | À saisir dans Render uniquement après accord |
 
-6. Vérifier que `/api/assistant` renvoie `{"enabled":true}`. Cette vérification et le mode local ne contactent pas OpenAI. Sur le site, l’utilisateur doit cocher l’option OpenAI et saisir le code testeur avant d’envoyer son message. Le premier envoi avec la case cochée est susceptible d’être facturé. Pour couper les appels, remettre `OPENAI_ENABLED=false` dans Render et redéployer.
+5. Vérifier `/healthz` et `/api/assistant`. Avec l’API désactivée, ils renvoient respectivement `{"ok":true}` et `{"enabled":false}`. Tester le mode local. Après autorisation, définir la clé OpenAI du projet dédié, passer `OPENAI_ENABLED=true` et déployer manuellement. Ouvrir **Accès propriétaire** dans l’assistant, se connecter, puis cocher OpenAI uniquement pour envoyer une demande connectée. La connexion seule ne contacte pas OpenAI. Pour couper les appels, remettre `OPENAI_ENABLED=false` et appliquer la configuration.
 
-### Fonctionnement et quotas
+### Protection de la consommation et des données
 
-Le code testeur est comparé côté serveur et les requêtes sans code valide sont rejetées avant tout appel payant. Le code reste dans le champ de la page le temps des essais, sans stockage persistant dans le navigateur. Le serveur n’envoie à OpenAI que le message présent et les fiches publiques du catalogue. L’API Responses sélectionne des identifiants et une catégorie de conseil via un schéma de sortie strict. L’interface affiche les fiches et textes connus. Les prix, stocks et seuils de budget restent déterminés par les offres PRIX MALIN validées. L’IA connectée ne prétend pas qu’un modèle respecte un budget. Le mode local reste disponible sans compte API et lorsque l’API est indisponible ou le quota atteint.
+Supabase Auth vérifie l’identité du propriétaire côté serveur sur chaque demande connectée. Le cookie est `Secure`, `HttpOnly` et `SameSite=Strict`. L’accès expire au bout de 10 minutes maximum et le serveur ne conserve pas de jeton de rafraîchissement. Les origines externes et les autres comptes ne peuvent pas réserver de quota via le site.
 
-Les compteurs sont globaux pour cette instance et cette clé utilisée par le service. Un seul appel OpenAI est simultané. Chaque tentative est réservée avant l’appel et compte même si OpenAI renvoie une erreur. Les plafonds journalier et mensuel suivent le calendrier UTC et persistent sur le disque après redémarrage. L’API refuse tout appel si le journal ne peut pas être lu ou écrit. Garder une seule instance et conserver le disque. Ces limites plafonnent les appels et la longueur des réponses, le montant dépend de la tarification du modèle. Utiliser une clé dédiée à ce service pour que d’autres applications ne consomment pas en dehors de ces compteurs.
+La fonction SQL réserve chaque tentative avant tout appel OpenAI. Le verrou dans PostgreSQL impose **5 tentatives par jour, 50 par mois et une par minute**, même après un redémarrage Render. Les fenêtres journalières et mensuelles suivent l’heure UTC. Les échecs du fournisseur consomment aussi une tentative. Le compteur ne stocke ni messages ni clés. En cas de pause, de panne ou d’erreur Supabase, le mode connecté se bloque et le mode local reste disponible. Si un projet Free est mis en pause, vérifier son état dans Supabase plutôt que d’utiliser un projet payant sans accord.
 
-`npm test` simule intégralement OpenAI et couvre le mode local, le filtrage des offres, l’origine, la réponse structurée et les limites. Aucun identifiant réel n’est nécessaire.
+Les suggestions OpenAI sont limitées aux fiches du catalogue. Les prix et la validation du budget dépendent uniquement du flux PRIX MALIN. `npm test` simule Supabase et OpenAI, sans identifiant réel.
+
+[Plans Render](https://render.com/docs/free) · [Clés Supabase](https://supabase.com/docs/guides/api/api-keys)

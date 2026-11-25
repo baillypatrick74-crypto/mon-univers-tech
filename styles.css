@@ -148,3 +148,9 @@ button:hover,.button:hover{color:var(--button-text)}
 @media(prefers-reduced-motion:reduce){
   .product:hover .product-picture img,.app-card:hover,.product:hover{transform:none}
 }
+#owner-access{margin-bottom:1rem;border:1px solid var(--line);border-radius:.65rem;padding:.65rem .8rem}
+#owner-access summary{cursor:pointer;font-weight:650}
+#owner-form{display:grid;gap:.55rem;margin-top:.65rem;max-width:24rem}
+#owner-form button{justify-self:start}
+#owner-logout{margin-top:.65rem}
+#owner-status:empty{display:none}

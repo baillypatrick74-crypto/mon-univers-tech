@@ -228,13 +228,55 @@ function bubble(text, user = false) {
   return element;
 }
 const api = new URL('./api/assistant', location.href);
-fetch(api, { cache: 'no-store', signal: AbortSignal.timeout(3000) })
+const session = new URL('./api/assistant/session', location.href);
+function ownerState(signedIn) {
+  $('owner-form').hidden = signedIn;
+  $('owner-logout').hidden = !signedIn;
+  $('ai-opt-in').hidden = !signedIn;
+  if (!signedIn) $('use-ai').checked = false;
+}
+fetch(session, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
   .then(response => response.ok ? response.json() : null)
-  .then(value => { $('ai-opt-in').hidden = value?.enabled !== true; })
+  .then(value => {
+    if (value?.enabled !== true) return;
+    $('owner-access').hidden = false;
+    ownerState(value.signedIn === true);
+  })
   .catch(() => {});
-$('use-ai').onchange = () => {
-  $('pilot-access').hidden = !$('use-ai').checked;
-  if (!$('use-ai').checked) $('pilot-code').value = '';
+
+$('owner-form').onsubmit = async event => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button');
+  const password = $('owner-password');
+  button.disabled = true;
+  try {
+    const response = await fetch(session, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('owner-email').value, password: password.value }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) {
+      $('owner-status').textContent = response.status === 401 ? 'Identifiants refusés.' : 'Connexion indisponible. Réessayez plus tard.';
+      return;
+    }
+    ownerState(true);
+    $('owner-status').textContent = 'Session propriétaire ouverte.';
+  } catch {
+    $('owner-status').textContent = 'Connexion indisponible. Réessayez plus tard.';
+  } finally {
+    password.value = '';
+    button.disabled = false;
+  }
+};
+$('owner-logout').onclick = async () => {
+  try {
+    const response = await fetch(session, { method: 'DELETE', signal: AbortSignal.timeout(6000) });
+    if (!response.ok) throw Error('Déconnexion indisponible');
+    ownerState(false);
+    $('owner-status').textContent = 'Session fermée.';
+  } catch {
+    $('owner-status').textContent = 'Déconnexion indisponible. Réessayez.';
+  }
 };
 $('chat-form').onsubmit = async event => {
   event.preventDefault();
@@ -269,21 +311,15 @@ $('chat-form').onsubmit = async event => {
   }
   $('conversation').scrollTop = $('conversation').scrollHeight;
   if ($('ai-opt-in').hidden || !$('use-ai').checked) return;
-  const code = $('pilot-code').value.trim();
-  if (!/^[a-f0-9]{64}$/i.test(code)) {
-    bubble('Saisissez votre code d’accès testeur pour utiliser OpenAI. Les conseils locaux sont disponibles.');
-    $('pilot-code').focus();
-    return;
-  }
   const submit = $('chat-form').querySelector('button');
   submit.disabled = true;
   const pending = bubble('Consultation de l’IA…');
   try {
-    const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${code}` },
-      body: JSON.stringify({ message }), signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }), signal: AbortSignal.timeout(22_000) });
     if (response.status === 401) {
-      $('pilot-code').value = '';
-      pending.textContent = 'Code testeur refusé. Le mode local reste disponible.';
+      ownerState(false);
+      pending.textContent = 'Session propriétaire requise. Le mode local reste disponible.';
       return;
     }
     if (response.status === 429) {
