@@ -1,0 +1,315 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101a30">
+<title>MON UNIVERS TECH</title>
+<style>
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:100px}
+body{margin:0;background:#0b1222;color:#fff;font-family:Arial,sans-serif;line-height:1.6}
+header{position:sticky;top:0;z-index:10;background:#101a30;padding:18px;text-align:center;border-bottom:1px solid #30405b}
+.logo{font-size:26px;font-weight:bold;color:#60e5ce}
+nav{display:flex;justify-content:center;flex-wrap:wrap;gap:18px;margin-top:12px}
+a{color:#60e5ce;text-decoration:none}
+nav a{color:#fff;font-weight:bold}
+.hero{padding:75px 20px;text-align:center;background:radial-gradient(ellipse at top right,#20516a,#101a30 55%,#0b1222)}
+.hero h1{font-size:clamp(38px,7vw,70px);line-height:1.1;margin:10px 0 24px}
+.hero h1 span{color:#60e5ce}
+p{color:#b6c5d8}
+section{max-width:1200px;margin:auto;padding:35px 22px}
+h2{font-size:30px;margin-bottom:8px}
+.subtitle{color:#60e5ce;font-size:13px;letter-spacing:2px;font-weight:bold}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;margin-top:24px}
+.card{background:#152238;border:1px solid #30405b;border-radius:20px;padding:24px;display:flex;flex-direction:column;align-items:flex-start}
+.card:hover{border-color:#60e5ce}
+.card p{flex:1}
+.icon{font-size:40px}
+button,.btn{display:inline-block;background:#60e5ce;color:#0b1222;border:0;padding:13px 20px;border-radius:12px;font-size:15px;font-weight:bold;cursor:pointer;margin:5px 0;text-align:center}
+button:hover,.btn:hover{background:#a0fff0}
+.secondary{background:#263a56;color:#fff}
+.panel{background:#152238;border:1px solid #30405b;border-radius:20px;padding:24px;margin-top:20px}
+input,select{width:100%;padding:14px;margin:8px 0 16px;border-radius:10px;border:1px solid #40516b;background:#0b1222;color:white;font-size:16px}
+label{color:#b6c5d8}
+.result{background:#0b1222;padding:16px;border-radius:12px;margin-top:14px;white-space:pre-wrap}
+.result a{display:block;padding:10px 0}
+footer{text-align:center;padding:30px;background:#101a30;color:#b6c5d8;border-top:1px solid #30405b}
+dialog{background:#152238;color:white;border:1px solid #40516b;border-radius:20px;width:min(500px,92%);padding:25px}
+dialog::backdrop{background:#000b}
+[hidden]{display:none!important}
+@media(max-width:600px){
+nav{gap:12px;font-size:13px}
+.hero{padding:45px 15px}
+section{padding:25px 15px}
+.grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+<div class="logo">✦ MON UNIVERS TECH</div>
+<nav>
+<a href="#accueil">Accueil</a>
+<a href="#applications">Applications</a>
+<a href="#boutique">Boutique</a>
+<a href="#bonsplans">Bons plans</a>
+<a href="#assistant">Assistant IA</a>
+</nav>
+</header>
+
+<div class="hero" id="accueil">
+<div class="subtitle">INNOVATION • HIGH-TECH • INTELLIGENCE</div>
+<h1>La technologie.<br><span>À votre portée.</span></h1>
+<p>Applications innovantes, bons plans et conseils high-tech.</p>
+<a class="btn" href="#applications">Découvrir nos applications</a>
+<a class="btn secondary" href="#bonsplans">Comparer les prix</a>
+</div>
+
+<section id="applications">
+<div class="subtitle">01 / NOS CRÉATIONS</div>
+<h2>Nos applications</h2>
+<div class="grid">
+
+<div class="card">
+<div class="icon">🚘</div>
+<h3>SENTINEL AUTO</h3>
+<p>Prototype de détection des véhicules, piétons et panneaux. Ne remplace pas la vigilance du conducteur.</p>
+<button onclick="details(0)">Découvrir</button>
+</div>
+
+<div class="card">
+<div class="icon">🛡️</div>
+<h3>ANTI-ARNAQUE</h3>
+<p>Projet de protection contre les appels indésirables.</p>
+<button onclick="details(1)">Découvrir</button>
+</div>
+
+<div class="card">
+<div class="icon">🏠</div>
+<h3>MAISON IA</h3>
+<p>Votre projet de maison intelligente et connectée.</p>
+<button onclick="details(2)">Découvrir</button>
+</div>
+
+<div class="card">
+<div class="icon">🔎</div>
+<h3>PRIX MALIN</h3>
+<p>Votre comparateur de prix high-tech.</p>
+<a class="btn" href="https://baillypatrick74-crypto.github.io/prix-malin/" target="_blank" rel="noopener">Ouvrir PRIX MALIN</a>
+</div>
+
+</div>
+</section>
+
+<section id="boutique">
+<div class="subtitle">02 / ESPACE COMMERCIAL</div>
+<h2>Boutique high-tech</h2>
+<p>Préparez votre sélection. Les commandes et paiements ne sont pas encore disponibles.</p>
+<div class="grid">
+
+<div class="card">
+<div class="icon">📱</div>
+<h3>Smartphones</h3>
+<p>Samsung, Apple et autres marques.</p>
+<button onclick="ajouter('Smartphones')">Ajouter à ma sélection</button>
+</div>
+
+<div class="card">
+<div class="icon">💻</div>
+<h3>Informatique</h3>
+<p>Ordinateurs, écrans et accessoires.</p>
+<button onclick="ajouter('Informatique')">Ajouter à ma sélection</button>
+</div>
+
+<div class="card">
+<div class="icon">🎧</div>
+<h3>Audio</h3>
+<p>Casques, écouteurs et enceintes.</p>
+<button onclick="ajouter('Audio')">Ajouter à ma sélection</button>
+</div>
+
+<div class="card">
+<div class="icon">🏡</div>
+<h3>Maison connectée</h3>
+<p>Prises, éclairages et objets intelligents.</p>
+<button onclick="ajouter('Maison connectée')">Ajouter à ma sélection</button>
+</div>
+
+</div>
+
+<div class="panel" id="selection" hidden>
+<h3>Ma sélection</h3>
+<p id="liste"></p>
+<button onclick="vider()">Vider la sélection</button>
+</div>
+</section>
+
+<section id="bonsplans">
+<div class="subtitle">03 / ÉCONOMIES</div>
+<h2>Les bons plans high-tech</h2>
+<div class="panel">
+<form id="recherche">
+<label for="produit">Quel produit recherchez-vous ?</label>
+<input id="produit" placeholder="Exemple : Samsung Galaxy S25 Edge" required>
+<button type="submit">🔍 Rechercher les offres</button>
+</form>
+<div id="offres" class="result" hidden></div>
+<p>Les prix et disponibilités sont consultables sur les sites marchands.</p>
+</div>
+</section>
+
+<section id="assistant">
+<div class="subtitle">04 / INNOVATION</div>
+<h2>Assistant d'achat intelligent</h2>
+<div class="panel">
+<form id="conseil">
+<label for="categorie">Type de produit</label>
+<select id="categorie">
+<option>Smartphone</option>
+<option>Ordinateur</option>
+<option>Téléviseur</option>
+<option>Casque audio</option>
+<option>Maison connectée</option>
+</select>
+
+<label for="budget">Votre budget maximum en euros</label>
+<input id="budget" type="number" min="10" value="400" required>
+
+<label for="priorite">Votre priorité</label>
+<select id="priorite">
+<option>Rapport qualité-prix</option>
+<option>Performances</option>
+<option>Simplicité</option>
+<option>Durabilité</option>
+</select>
+
+<button type="submit">✦ Obtenir des conseils</button>
+</form>
+<div id="reponse" class="result" hidden></div>
+<button id="chercherConseil" hidden>Rechercher les offres</button>
+<p>Version expérimentale : conseils automatisés par règles, sans intelligence artificielle connectée.</p>
+</div>
+</section>
+
+<footer>
+<strong>MON UNIVERS TECH</strong>
+<p>Applications • Innovation • High-tech</p>
+<p>© <span id="annee"></span> MON UNIVERS TECH</p>
+<a href="#accueil">Retour en haut ↑</a>
+</footer>
+
+<dialog id="fenetre">
+<h2 id="titre"></h2>
+<p id="description"></p>
+<a id="projet" class="btn" target="_blank" rel="noopener" hidden>Voir le projet</a>
+<p>Les fichiers APK seront ajoutés ultérieurement.</p>
+<button onclick="document.getElementById('fenetre').close()">Fermer</button>
+</dialog>
+
+<script>
+const $=id=>document.getElementById(id);
+$('annee').textContent=new Date().getFullYear();
+
+const applications=[
+['SENTINEL AUTO','Prototype expérimental d’assistance visuelle et sonore à la conduite.','https://github.com/baillypatrick74-crypto/Sentinel-auto'],
+['ANTI-ARNAQUE','Application Android de filtrage des appels indésirables, en développement.'],
+['MAISON IA','Projet de gestion des appareils de la maison connectée.']
+];
+
+function details(i){
+const app=applications[i];
+$('titre').textContent=app[0];
+$('description').textContent=app[1];
+$('projet').hidden=!app[2];
+if(app[2]) $('projet').href=app[2];
+$('fenetre').showModal();
+}
+
+let choix=[];
+try{
+const saved=JSON.parse(localStorage.getItem('mut-selection')||'[]');
+if(Array.isArray(saved)) choix=saved.filter(x=>typeof x==='string');
+}catch(e){}
+
+function afficher(){
+$('selection').hidden=choix.length===0;
+$('liste').textContent=choix.join(' • ');
+try{localStorage.setItem('mut-selection',JSON.stringify(choix))}catch(e){}
+}
+
+function ajouter(nom){
+if(!choix.includes(nom)) choix.push(nom);
+afficher();
+}
+
+function vider(){
+choix=[];
+afficher();
+}
+
+afficher();
+
+function rechercher(){
+const q=$('produit').value.trim();
+if(!q)return;
+const texte=encodeURIComponent(q);
+const liens=[
+['Google Shopping','https://www.google.com/search?tbm=shop&q='+texte],
+['Idealo','https://www.idealo.fr/prix/MainSearchProductCategory.html?q='+texte],
+['PRIX MALIN','https://baillypatrick74-crypto.github.io/prix-malin/']
+];
+$('offres').replaceChildren();
+for(const [nom,url] of liens){
+const lien=document.createElement('a');
+lien.href=url;
+lien.target='_blank';
+lien.rel='noopener noreferrer';
+lien.textContent=nom+' ↗';
+$('offres').appendChild(lien);
+}
+$('offres').hidden=false;
+}
+
+$('recherche').onsubmit=e=>{
+e.preventDefault();
+rechercher();
+};
+
+const conseils={
+'Smartphone':'Vérifiez la batterie, le stockage, la 5G, le Wi-Fi et les mises à jour.',
+'Ordinateur':'Comparez le processeur, la mémoire RAM, le SSD et la garantie.',
+'Téléviseur':'Vérifiez la taille, la résolution et les connexions HDMI.',
+'Casque audio':'Comparez le confort, l’autonomie et la réduction de bruit.',
+'Maison connectée':'Vérifiez la compatibilité, la sécurité et les applications.'
+};
+
+const priorites={
+'Rapport qualité-prix':'Comparez le prix total, livraison comprise.',
+'Performances':'Consultez les tests indépendants.',
+'Simplicité':'Privilégiez une installation facile.',
+'Durabilité':'Vérifiez la réparabilité et les mises à jour.'
+};
+
+let suggestion='';
+$('conseil').onsubmit=e=>{
+e.preventDefault();
+const c=$('categorie').value;
+const b=$('budget').value;
+const p=$('priorite').value;
+$('reponse').textContent='Votre recherche : '+c+' — '+b+' € maximum.\n\n'+conseils[c]+'\n\n'+priorites[p]+'\n\nVérifiez également la garantie et les conditions de retour.';
+$('reponse').hidden=false;
+suggestion=c+' moins de '+b+' euros';
+$('chercherConseil').hidden=false;
+};
+
+$('chercherConseil').onclick=()=>{
+$('produit').value=suggestion;
+rechercher();
+$('bonsplans').scrollIntoView();
+};
+</script>
+</body>
+</html>
