@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "MON UNIVERS TECH",
+  "short_name": "Univers Tech",
+  "description": "Applications et comparaison high-tech.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#091323",
+  "theme_color": "#091323",
+  "icons": [
+    { "src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
