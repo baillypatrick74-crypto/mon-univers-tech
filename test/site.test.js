@@ -80,9 +80,14 @@ test('Affiliation inactive et installateurs publics PRIX MALIN', () => {
   assert.equal(affiliateUrl({ ...offer, url: 'https://www.fnac.com.example.test/casque' }, programmes), null);
 });
 
-async function startServer(t, env, code = "await import('./server.js')") {
-  const child = spawn(process.execPath, ['--input-type=module', '-e', code], {
-    env: { ...process.env, PORT: '0', HOST: '127.0.0.1', OPENAI_ENABLED: '', OPENAI_API_KEY: '', OPENAI_MODEL: '', PUBLIC_URL: '', ...env },
+async function startServer(t, env, code = '') {
+  const script = `
+    globalThis.fetch = async () => { throw Error('Appel réseau non simulé'); };
+    ${code || "await import('./server.js')"}
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
+    // Chaque scénario fournit sa propre configuration, sans les variables ni les clés de Render.
+    env: { PORT: '0', HOST: '127.0.0.1', ...env },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   t.after(() => child.kill());
